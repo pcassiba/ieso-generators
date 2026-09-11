@@ -20,11 +20,18 @@ export const ORDERED_SECTIONS = [
   SECTION_KEYS.BATTERIES
 ];
 
-// Reference rated capacity (MW) for standard nuclear facilities
+// Reference rated capacity (MW) for standard nuclear facilities and units
 const NUCLEAR_INSTALLED_RATINGS = {
   'Bruce': 6550,
   'Darlington': 3512,
   'Pickering': 2064
+};
+
+const NUCLEAR_UNIT_RATINGS = {
+  'BRUCEA-G1': 828, 'BRUCEA-G2': 828, 'BRUCEA-G3': 795, 'BRUCEA-G4': 795,
+  'BRUCEB-G5': 795, 'BRUCEB-G6': 817, 'BRUCEB-G7': 817, 'BRUCEB-G8': 817,
+  'DARLINGTON-G1': 878, 'DARLINGTON-G2': 878, 'DARLINGTON-G3': 878, 'DARLINGTON-G4': 878,
+  'PICKERINGB-G5': 344, 'PICKERINGB-G6': 344, 'PICKERINGB-G7': 344, 'PICKERINGB-G8': 344
 };
 
 /**
@@ -135,6 +142,18 @@ export function mapFuelToSection(fuelType, genName) {
 }
 
 /**
+ * Default fallback ratings by fuel type if capability is zero and no sister unit is available
+ */
+function getDefaultFuelRating(fuelType) {
+  const fuel = (fuelType || '').toUpperCase();
+  if (fuel === 'GAS') return 150;
+  if (fuel === 'HYDRO') return 50;
+  if (fuel === 'WIND') return 50;
+  if (fuel === 'BATTERIES' || fuel === 'OTHER') return 25;
+  return 50;
+}
+
+/**
  * Parse IESO Generator Output XML String into structured data
  * @param {string} xmlString - Raw XML content
  * @param {number|null} selectedHour - Optional hour selector
@@ -178,8 +197,11 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       title: secKey,
       totalOutputMW: 0,
       totalCapabilityMW: 0,
+      totalUnavailableMW: 0,
       facilitiesCount: 0,
       unitsCount: 0,
+      outageFacilitiesCount: 0,
+      outageUnitsCount: 0,
       facilitiesMap: {}
     };
   });
@@ -195,6 +217,7 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     const genName = nameNode.textContent.trim();
     const fuelType = fuelNode ? fuelNode.textContent.trim() : 'UNKNOWN';
 
+    // Get active hour metric
     const getMetricForHour = (selectorTag) => {
       const nodes = Array.from(genNode.querySelectorAll(selectorTag) || genNode.querySelectorAll(`*|${selectorTag}`));
       for (const node of nodes) {
@@ -212,9 +235,25 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       return 0;
     };
 
+    // Calculate max capability across 24h for rating detection
+    const getMaxMetricAcrossFile = (selectorTag) => {
+      const nodes = Array.from(genNode.querySelectorAll(selectorTag) || genNode.querySelectorAll(`*|${selectorTag}`));
+      let maxVal = 0;
+      nodes.forEach(node => {
+        const valNode = node.querySelector('EnergyMW') || node.querySelector('*|EnergyMW');
+        const val = valNode ? parseInt(valNode.textContent, 10) || 0 : 0;
+        if (val > maxVal) maxVal = val;
+      });
+      return maxVal;
+    };
+
     const outputMW = getMetricForHour('Output');
     const capabilityMW = getMetricForHour('Capability');
     const availMW = getMetricForHour('AvailCapacity');
+
+    const maxCap24h = getMaxMetricAcrossFile('Capability');
+    const maxAvail24h = getMaxMetricAcrossFile('AvailCapacity');
+    const maxCapabilityMW = Math.max(capabilityMW, maxCap24h, maxAvail24h);
 
     const statusInfo = getUnitStatus(outputMW, capabilityMW, availMW);
     const shortLabel = getShortUnitLabel(genName);
@@ -230,6 +269,8 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       outputMW,
       capabilityMW,
       availMW,
+      maxCapabilityMW,
+      unavailableMW: 0,
       status: statusInfo.status,
       color: statusInfo.color,
       statusLabel: statusInfo.label
@@ -244,6 +285,8 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
         fuelType,
         totalOutputMW: 0,
         totalCapabilityMW: 0,
+        totalUnavailableMW: 0,
+        outageUnitsCount: 0,
         installedRatingMW: NUCLEAR_INSTALLED_RATINGS[facilityName] || 0,
         units: []
       };
@@ -259,6 +302,41 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     section.unitsCount++;
 
     totalGeneratorsProcessed++;
+  });
+
+  // Second pass: Calculate facility unit max ratings and unavailable MW for outages
+  Object.keys(sectionsMap).forEach(secKey => {
+    const sec = sectionsMap[secKey];
+    Object.values(sec.facilitiesMap).forEach(fac => {
+      // Find highest unit capability in facility to serve as fallback rating
+      const facMaxUnitCap = Math.max(
+        ...fac.units.map(u => Math.max(u.maxCapabilityMW, u.capabilityMW, u.availMW)),
+        0
+      );
+
+      fac.units.forEach(unit => {
+        if (unit.status === 'outage') {
+          const ratedCap = NUCLEAR_UNIT_RATINGS[unit.genName] ||
+            (unit.maxCapabilityMW > 0 ? unit.maxCapabilityMW : null) ||
+            (facMaxUnitCap > 0 ? facMaxUnitCap : null) ||
+            getDefaultFuelRating(unit.fuelType);
+
+          unit.unavailableMW = Math.max(0, ratedCap - unit.availMW);
+        } else {
+          unit.unavailableMW = 0;
+        }
+      });
+
+      fac.outageUnits = fac.units.filter(u => u.status === 'outage');
+      fac.outageUnitsCount = fac.outageUnits.length;
+      fac.totalUnavailableMW = fac.outageUnits.reduce((sum, u) => sum + u.unavailableMW, 0);
+
+      sec.totalUnavailableMW += fac.totalUnavailableMW;
+      if (fac.outageUnitsCount > 0) {
+        sec.outageFacilitiesCount++;
+        sec.outageUnitsCount += fac.outageUnitsCount;
+      }
+    });
   });
 
   // Process facilities list and sort
@@ -298,11 +376,16 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     processedSections.find(s => s.key === key)
   ).filter(Boolean);
 
+  const grandTotalUnavailableMW = orderedSectionsList.reduce((sum, s) => sum + (s.totalUnavailableMW || 0), 0);
+  const grandTotalOutageUnits = orderedSectionsList.reduce((sum, s) => sum + (s.outageUnitsCount || 0), 0);
+
   return {
     createdAt,
     reportDate,
     activeHour,
     totalGeneratorsProcessed,
+    grandTotalUnavailableMW,
+    grandTotalOutageUnits,
     sections: orderedSectionsList
   };
 }

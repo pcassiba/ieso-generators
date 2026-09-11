@@ -5,6 +5,8 @@ import SectionHeader from './components/SectionHeader';
 import FacilityCard from './components/FacilityCard';
 import GeneratorCard from './components/GeneratorCard';
 import Visualization from './components/Visualization';
+import OutagesSummary from './components/OutagesSummary';
+import OutageVisualization from './components/OutageVisualization';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
@@ -345,6 +347,24 @@ export default function App() {
             {activeTab === 'visual' && (
               <main class="py-1">
                 <Visualization
+                  data={data}
+                  viewMode={viewMode}
+                  onViewModeChange={(mode) => setViewMode(mode)}
+                />
+              </main>
+            )}
+
+            {/* Tab 3: Outages Summary View */}
+            {activeTab === 'outages' && (
+              <main class="py-1">
+                <OutagesSummary data={data} />
+              </main>
+            )}
+
+            {/* Tab 4: Unified Outage Visualization Ranking View */}
+            {activeTab === 'outage_visual' && (
+              <main class="py-1">
+                <OutageVisualization
                   data={data}
                   viewMode={viewMode}
                   onViewModeChange={(mode) => setViewMode(mode)}
