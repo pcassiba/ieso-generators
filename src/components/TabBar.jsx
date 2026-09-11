@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutList, PieChart, AlertTriangle, AlertOctagon, BarChart2, TrendingUp } from 'lucide-react';
+import { LayoutList, PieChart, AlertOctagon, BarChart2, TrendingUp } from 'lucide-react';
 
 export default function TabBar({ activeTab, onSelectTab }) {
   return (
@@ -50,18 +50,6 @@ export default function TabBar({ activeTab, onSelectTab }) {
       >
         <BarChart2 class="w-3.5 h-3.5 text-blue-600" />
         <span>Mix & Utilization</span>
-      </button>
-
-      <button
-        onClick={() => onSelectTab('outages')}
-        class={`pb-2 flex items-center gap-1.5 transition-colors border-b-2 whitespace-nowrap ${
-          activeTab === 'outages'
-            ? 'border-rose-600 text-rose-700 font-bold'
-            : 'border-transparent text-slate-500 hover:text-rose-700'
-        }`}
-      >
-        <AlertTriangle class="w-3.5 h-3.5 text-rose-500" />
-        <span>Outages</span>
       </button>
 
       <button
