@@ -137,7 +137,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
             </h2>
             <span class="text-rose-400 mx-2">•</span>
             <span class="text-rose-800 font-medium">
-              Total Grid Outage Impact: <strong class="text-rose-900 font-extrabold">{data.grandTotalUnavailableMW?.toLocaleString() || 0} MW</strong>
+              Total Grid Outage Impact: <strong class="text-rose-900 font-extrabold">{data.grandTotalUnavailableMW?.toLocaleString() || 0} MW unavailable</strong>
             </span>
           </div>
         </div>
@@ -186,7 +186,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
           </span>
           <span class="text-rose-300">•</span>
           <span class="text-rose-800 font-medium text-[11px]">
-            {rankedItems.length} {isGeneratorView ? 'outage units' : 'affected facilities'} ({rankedItems.reduce((sum, i) => sum + i.unavailableMW, 0).toLocaleString()} MW out)
+            {rankedItems.length} {isGeneratorView ? 'outage units' : 'affected facilities'} ({rankedItems.reduce((sum, i) => sum + i.unavailableMW, 0).toLocaleString()} MW unavailable)
           </span>
         </div>
 
@@ -301,7 +301,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
                           </div>
                         ) : (
                           <div class="text-[10px] text-rose-800 font-medium truncate">
-                            {item.outageUnitsCount} {item.outageUnitsCount === 1 ? 'unit out' : 'units out'}
+                            {item.outageUnitsCount} {item.outageUnitsCount === 1 ? 'unit unavailable' : 'units unavailable'}
                           </div>
                         )}
                       </div>
@@ -332,7 +332,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
                             </div>
                           )}
                           <div class="flex justify-between border-t border-slate-800 pt-0.5 mt-0.5">
-                            <span class="text-slate-400 font-sans">Capacity Out:</span>
+                            <span class="text-slate-400 font-sans">Unavailable Capacity:</span>
                             <span class="text-rose-400 font-bold">{item.unavailableMW.toLocaleString()} MW</span>
                           </div>
                         </div>
@@ -386,7 +386,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
                             </span>
                           ) : (
                             <span class="text-[10px] text-rose-700 block truncate leading-none">
-                              {item.outageUnitsCount} {item.outageUnitsCount === 1 ? 'unit out' : 'units out'}
+                              {item.outageUnitsCount} {item.outageUnitsCount === 1 ? 'unit unavailable' : 'units unavailable'}
                             </span>
                           )}
                         </div>

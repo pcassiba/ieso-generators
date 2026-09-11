@@ -55,7 +55,7 @@ export default function GeneratorCard({ unit, onSelectGenerator }) {
       <div class="text-[10.5px] text-slate-500 font-normal leading-none mt-0.5">
         <span>{capabilityFormatted} MW cap</span>
         <span class="mx-1 text-slate-300">·</span>
-        <span class="font-semibold text-slate-700">{outputFormatted} MW out</span>
+        <span class="font-semibold text-slate-700">{outputFormatted} MW output</span>
       </div>
     </div>
   );

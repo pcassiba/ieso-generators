@@ -108,7 +108,7 @@ export default function FacilityCard({ facility, onSelectFacility, onSelectGener
         <div class="text-[11px] text-slate-500 font-normal leading-tight mt-0.5 flex items-center gap-1.5 flex-wrap">
           <span>{capabilityFormatted} MW cap</span>
           <span class="text-slate-300">·</span>
-          <span class="font-semibold text-slate-700">{outputFormatted} MW out</span>
+          <span class="font-semibold text-slate-700">{outputFormatted} MW output</span>
           {hohStr && (
             <span class="text-slate-500 font-mono text-[10.5px]">
               ({hohStr})
@@ -209,7 +209,7 @@ export default function FacilityCard({ facility, onSelectFacility, onSelectGener
       <div class="text-[10.5px] text-slate-500 font-normal leading-none">
         <span>{capabilityFormatted} MW cap</span>
         <span class="mx-1 text-slate-300">·</span>
-        <span class="font-semibold text-slate-700">{outputFormatted} MW out</span>
+        <span class="font-semibold text-slate-700">{outputFormatted} MW output</span>
       </div>
     </div>
   );

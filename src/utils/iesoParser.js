@@ -176,12 +176,107 @@ function getDefaultFuelRating(fuelType) {
 }
 
 /**
+ * Parse IESO Adequacy XML String into outage MW metrics by fuel type for a specific hour
+ * @param {string} adequacyXmlString - Raw Adequacy XML content
+ * @param {number} targetHour - Dispatch hour (1 to 24)
+ */
+export function parseAdequacyXml(adequacyXmlString, targetHour) {
+  if (!adequacyXmlString || !targetHour) return null;
+
+  try {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(adequacyXmlString, 'text/xml');
+
+    const result = {
+      [SECTION_KEYS.NUCLEAR]: 0,
+      [SECTION_KEYS.GAS]: 0,
+      [SECTION_KEYS.HYDRO]: 0,
+      [SECTION_KEYS.WIND]: 0,
+      [SECTION_KEYS.BATTERIES]: 0,
+      [SECTION_KEYS.OTHER]: 0,
+      grandTotal: 0
+    };
+
+    const resourceNodes = Array.from(xmlDoc.querySelectorAll('InternalResource') || xmlDoc.querySelectorAll('*|InternalResource'));
+
+    resourceNodes.forEach(node => {
+      const fuelNode = node.querySelector('FuelType') || node.querySelector('*|FuelType');
+      if (!fuelNode) return;
+      const fuel = fuelNode.textContent.trim().toUpperCase();
+
+      const outageNodes = Array.from(node.querySelectorAll('Outage') || node.querySelectorAll('*|Outage'));
+      let outageMW = 0;
+      for (const oNode of outageNodes) {
+        const hNode = oNode.querySelector('DeliveryHour') || oNode.querySelector('*|DeliveryHour');
+        if (hNode && parseInt(hNode.textContent, 10) === targetHour) {
+          const valNode = oNode.querySelector('EnergyMW') || oNode.querySelector('*|EnergyMW');
+          outageMW = valNode ? parseInt(valNode.textContent, 10) || 0 : 0;
+          break;
+        }
+      }
+
+      if (fuel === 'NUCLEAR') {
+        result[SECTION_KEYS.NUCLEAR] += outageMW;
+      } else if (fuel === 'GAS') {
+        result[SECTION_KEYS.GAS] += outageMW;
+      } else if (fuel === 'HYDRO') {
+        result[SECTION_KEYS.HYDRO] += outageMW;
+      } else if (fuel === 'WIND') {
+        result[SECTION_KEYS.WIND] += outageMW;
+      } else if (fuel === 'STORAGE' || fuel === 'BATTERIES') {
+        result[SECTION_KEYS.BATTERIES] += outageMW;
+      } else {
+        result[SECTION_KEYS.OTHER] += outageMW;
+      }
+    });
+
+    // Extract official Total Internal Resources Outages if available
+    const totalResourceNode = xmlDoc.querySelector('TotalInternalResources') || xmlDoc.querySelector('*|TotalInternalResources');
+    if (totalResourceNode) {
+      const totalOutageNodes = Array.from(totalResourceNode.querySelectorAll('Outage') || totalResourceNode.querySelectorAll('*|Outage'));
+      for (const oNode of totalOutageNodes) {
+        const hNode = oNode.querySelector('DeliveryHour') || oNode.querySelector('*|DeliveryHour');
+        if (hNode && parseInt(hNode.textContent, 10) === targetHour) {
+          const valNode = oNode.querySelector('EnergyMW') || oNode.querySelector('*|EnergyMW');
+          result.grandTotal = valNode ? parseInt(valNode.textContent, 10) || 0 : 0;
+          break;
+        }
+      }
+    }
+
+    if (!result.grandTotal) {
+      result.grandTotal = result[SECTION_KEYS.NUCLEAR] +
+        result[SECTION_KEYS.GAS] +
+        result[SECTION_KEYS.HYDRO] +
+        result[SECTION_KEYS.WIND] +
+        result[SECTION_KEYS.BATTERIES] +
+        result[SECTION_KEYS.OTHER];
+    }
+
+    return result;
+  } catch (err) {
+    console.warn('Failed to parse Adequacy XML:', err);
+    return null;
+  }
+}
+
+/**
  * Parse IESO Generator Output XML String into structured data
  * @param {string} xmlString - Raw XML content
+ * @param {string|null} adequacyXmlString - Optional raw Adequacy XML content
  * @param {number|null} selectedHour - Optional hour selector
  * @param {string} sortBy - 'capability' | 'output'
  */
-export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capability') {
+export function parseIesoXml(xmlString, adequacyXmlString = null, selectedHour = null, sortBy = 'capability') {
+  let adequacyXml = adequacyXmlString;
+  let targetSelHour = selectedHour;
+
+  // Handle signature overload where 2nd param might be selectedHour number
+  if (typeof adequacyXmlString === 'number') {
+    targetSelHour = adequacyXmlString;
+    adequacyXml = null;
+  }
+
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
 
@@ -208,11 +303,14 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
   });
 
   const availableHours = Array.from(hoursFound).sort((a, b) => a - b);
-  const activeHour = selectedHour && availableHours.includes(selectedHour)
-    ? selectedHour
+  const activeHour = targetSelHour && availableHours.includes(targetSelHour)
+    ? targetSelHour
     : (availableHours.length > 0 ? Math.max(...availableHours) : 1);
 
   const prevHour = activeHour > 1 ? activeHour - 1 : null;
+
+  // Parse official Adequacy report outages for the active dispatch hour
+  const adequacyData = adequacyXml ? parseAdequacyXml(adequacyXml, activeHour) : null;
 
   const sectionsMap = {};
   Object.values(SECTION_KEYS).forEach(secKey => {
@@ -372,7 +470,7 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     totalGeneratorsProcessed++;
   });
 
-  // Second pass: Calculate facility 24-hour hourly series, HoH metrics, unit max ratings, and unavailable MW
+  // Second pass: Calculate facility 24-hour hourly series, HoH metrics, unit max ratings, and unit unavailable MW
   Object.keys(sectionsMap).forEach(secKey => {
     const sec = sectionsMap[secKey];
     Object.values(sec.facilitiesMap).forEach(fac => {
@@ -418,7 +516,6 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       fac.outageUnitsCount = fac.outageUnits.length;
       fac.totalUnavailableMW = fac.outageUnits.reduce((sum, u) => sum + u.unavailableMW, 0);
 
-      sec.totalUnavailableMW += fac.totalUnavailableMW;
       if (fac.outageUnitsCount > 0) {
         sec.outageFacilitiesCount++;
         sec.outageUnitsCount += fac.outageUnitsCount;
@@ -468,7 +565,20 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     processedSections.find(s => s.key === key)
   ).filter(Boolean);
 
-  const grandTotalUnavailableMW = orderedSectionsList.reduce((sum, s) => sum + (s.totalUnavailableMW || 0), 0);
+  // If official Adequacy report data is available, override section & headline outage MW totals
+  if (adequacyData) {
+    orderedSectionsList.forEach(sec => {
+      if (adequacyData[sec.key] !== undefined) {
+        sec.totalUnavailableMW = adequacyData[sec.key];
+        sec.isOfficialAdequacy = true;
+      }
+    });
+  }
+
+  const grandTotalUnavailableMW = adequacyData && adequacyData.grandTotal !== undefined
+    ? adequacyData.grandTotal
+    : orderedSectionsList.reduce((sum, s) => sum + (s.totalUnavailableMW || 0), 0);
+
   const grandTotalOutageUnits = orderedSectionsList.reduce((sum, s) => sum + (s.outageUnitsCount || 0), 0);
 
   return {
@@ -479,6 +589,7 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     totalGeneratorsProcessed,
     grandTotalUnavailableMW,
     grandTotalOutageUnits,
+    isOfficialAdequacy: !!adequacyData,
     sections: orderedSectionsList
   };
 }

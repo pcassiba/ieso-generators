@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 
 const IESO_BASE_URL = 'https://reports-public.ieso.ca/public/GenOutputCapability/';
+const IESO_ADEQUACY_BASE_URL = 'https://reports-public.ieso.ca/public/Adequacy3/';
 
 /**
  * Server-side API proxy for IESO XML generation report
@@ -44,6 +45,39 @@ app.get('/api/ieso-generation', async (req, res) => {
   } catch (error) {
     console.error('[Proxy Error] Failed to fetch IESO XML:', error);
     res.status(500).json({ error: 'Server proxy failed to fetch IESO XML report' });
+  }
+});
+
+/**
+ * Server-side API proxy for IESO XML Adequacy report
+ * GET /api/ieso-adequacy?filename=PUB_Adequacy3.xml
+ */
+app.get('/api/ieso-adequacy', async (req, res) => {
+  try {
+    const rawFilename = req.query.filename || 'PUB_Adequacy3.xml';
+    const cleanFilename = path.basename(String(rawFilename));
+    const targetUrl = `${IESO_ADEQUACY_BASE_URL}${cleanFilename}`;
+
+    console.log(`[Proxy] Fetching Adequacy XML report from: ${targetUrl}`);
+
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) IESO-Generator-Dashboard/1.0',
+        'Accept': 'application/xml, text/xml, */*'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`[Proxy] Adequacy server returned status ${response.status}`);
+      return res.status(response.status).json({ error: `Adequacy server returned status ${response.status}` });
+    }
+
+    const xmlText = await response.text();
+    res.set('Content-Type', 'text/xml');
+    res.send(xmlText);
+  } catch (error) {
+    console.error('[Proxy Error] Failed to fetch Adequacy XML:', error);
+    res.status(500).json({ error: 'Server proxy failed to fetch IESO Adequacy report' });
   }
 });
 

@@ -14,6 +14,7 @@ import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past }
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 
 const API_GENERATION_ENDPOINT = '/api/ieso-generation';
+const API_ADEQUACY_ENDPOINT = '/api/ieso-adequacy';
 const LIVE_DIRECT_URL = 'https://reports-public.ieso.ca/public/GenOutputCapability/PUB_GenOutputCapability.xml';
 const CORS_PROXY_BASE = 'https://api.allorigins.win/raw?url=';
 
@@ -21,6 +22,7 @@ const INITIAL_LIMIT = 18;
 
 export default function App() {
   const [xmlText, setXmlText] = useState(null);
+  const [adequacyXmlText, setAdequacyXmlText] = useState(null);
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -112,10 +114,55 @@ export default function App() {
       }
     }
 
+    // Fetch official IESO Adequacy XML report for official outage totals
+    const targetDateStr = (!isLiveMode && selectedDate)
+      ? selectedDate
+      : new Date().toISOString().split('T')[0];
+    const cleanDateStr = targetDateStr.replace(/-/g, '');
+    const adequacyFilename = `PUB_Adequacy3_${cleanDateStr}.xml`;
+
+    const adequacyApiUrl = `${API_ADEQUACY_ENDPOINT}?filename=${encodeURIComponent(adequacyFilename)}`;
+    const adequacyDirectUrl = `https://reports-public.ieso.ca/public/Adequacy3/${adequacyFilename}`;
+    const adequacyFallbackLiveUrl = `https://reports-public.ieso.ca/public/Adequacy3/PUB_Adequacy3.xml`;
+
+    let fetchedAdequacyXml = null;
+
+    try {
+      const adeqRes = await fetch(adequacyApiUrl, { cache: 'no-cache' });
+      if (adeqRes.ok) {
+        fetchedAdequacyXml = await adeqRes.text();
+      }
+    } catch (aErr1) {
+      console.warn('Adequacy API fetch error:', aErr1);
+    }
+
+    if (!fetchedAdequacyXml) {
+      try {
+        const adeqRes = await fetch(adequacyDirectUrl, { cache: 'no-cache' });
+        if (adeqRes.ok) {
+          fetchedAdequacyXml = await adeqRes.text();
+        }
+      } catch (aErr2) {
+        console.warn('Adequacy direct fetch error:', aErr2);
+      }
+    }
+
+    if (!fetchedAdequacyXml) {
+      try {
+        const adeqRes = await fetch(adequacyFallbackLiveUrl, { cache: 'no-cache' });
+        if (adeqRes.ok) {
+          fetchedAdequacyXml = await adeqRes.text();
+        }
+      } catch (aErr3) {
+        console.warn('Adequacy live fallback fetch error:', aErr3);
+      }
+    }
+
     if (fetchedXml) {
       setXmlText(fetchedXml);
+      setAdequacyXmlText(fetchedAdequacyXml);
       try {
-        const parsed = parseIesoXml(fetchedXml, null, sortBy);
+        const parsed = parseIesoXml(fetchedXml, fetchedAdequacyXml, null, sortBy);
         setData(parsed);
         setLastRefreshed(new Date());
       } catch (parseErr) {
@@ -162,7 +209,7 @@ export default function App() {
     setSortBy(newSortBy);
     if (xmlText) {
       try {
-        const parsed = parseIesoXml(xmlText, null, newSortBy);
+        const parsed = parseIesoXml(xmlText, adequacyXmlText, null, newSortBy);
         setData(parsed);
       } catch (err) {
         console.error('Failed to sort data:', err);
