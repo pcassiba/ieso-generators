@@ -1,9 +1,9 @@
 /**
  * IESO Directory Index Parser Utility
- * Fetches and parses available historical report dates and versions
+ * Fetches and parses available historical report dates and versions via server API
  */
 
-const DIRECTORY_PROXY_URL = '/api/ieso-reports/?C=M;O=D';
+const DIRECTORY_API_ENDPOINT = '/api/ieso-directory';
 const DIRECTORY_DIRECT_URL = 'https://reports-public.ieso.ca/public/GenOutputCapability/?C=M;O=D';
 const CORS_PROXY_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(DIRECTORY_DIRECT_URL);
 
@@ -11,10 +11,10 @@ export async function fetchAvailableReportsIndex() {
   let html = null;
 
   try {
-    const res = await fetch(DIRECTORY_PROXY_URL);
+    const res = await fetch(DIRECTORY_API_ENDPOINT);
     if (res.ok) html = await res.text();
   } catch (err1) {
-    console.warn('Vite proxy directory fetch failed, trying direct...', err1);
+    console.warn('Server API directory fetch failed, trying direct URL...', err1);
   }
 
   if (!html) {

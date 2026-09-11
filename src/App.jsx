@@ -6,7 +6,7 @@ import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 
-const LIVE_REPORT_URL = '/api/ieso-reports/PUB_GenOutputCapability.xml';
+const API_GENERATION_ENDPOINT = '/api/ieso-generation';
 const LIVE_DIRECT_URL = 'https://reports-public.ieso.ca/public/GenOutputCapability/PUB_GenOutputCapability.xml';
 const CORS_PROXY_BASE = 'https://api.allorigins.win/raw?url=';
 
@@ -36,7 +36,6 @@ export default function App() {
         setAvailableDates(dates);
         setVersionsByDateMap(versionsByDate);
 
-        // Default selected date to latest available date
         const latestDate = dates[0];
         setSelectedDate(latestDate);
 
@@ -57,29 +56,29 @@ export default function App() {
     }
   };
 
-  // Fetch report XML (live or historical)
+  // Fetch report XML (live or historical) via server API route
   const fetchReport = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
-    let targetUrl = LIVE_REPORT_URL;
-    let fallbackDirect = LIVE_DIRECT_URL;
-
+    let filename = 'PUB_GenOutputCapability.xml';
     if (!isLiveMode && selectedDate && selectedVersion) {
-      const filename = buildReportFilename(selectedDate, selectedVersion);
-      targetUrl = `/api/ieso-reports/${filename}`;
-      fallbackDirect = `https://reports-public.ieso.ca/public/GenOutputCapability/${filename}`;
+      filename = buildReportFilename(selectedDate, selectedVersion);
     }
+
+    const apiTargetUrl = `${API_GENERATION_ENDPOINT}?filename=${encodeURIComponent(filename)}`;
+    const fallbackDirect = `https://reports-public.ieso.ca/public/GenOutputCapability/${filename}`;
 
     let fetchedXml = null;
 
     try {
-      const response = await fetch(targetUrl, { cache: 'no-cache' });
+      // Primary: Call Express backend API proxy route
+      const response = await fetch(apiTargetUrl, { cache: 'no-cache' });
       if (response.ok) {
         fetchedXml = await response.text();
       }
     } catch (err1) {
-      console.warn('Vite proxy fetch failed, trying direct URL...', err1);
+      console.warn('Backend API proxy fetch failed, trying direct URL fallback...', err1);
     }
 
     if (!fetchedXml) {
@@ -89,7 +88,7 @@ export default function App() {
           fetchedXml = await response.text();
         }
       } catch (err2) {
-        console.warn('Direct fetch failed, trying CORS proxy...', err2);
+        console.warn('Direct fetch failed, trying CORS proxy fallback...', err2);
       }
     }
 
@@ -114,7 +113,7 @@ export default function App() {
         setError('Failed to parse IESO report: ' + parseErr.message);
       }
     } else {
-      setError(`Unable to load ${isLiveMode ? 'live' : 'archive'} report XML from IESO.`);
+      setError(`Unable to load ${isLiveMode ? 'live' : 'archive'} report XML from server API.`);
     }
 
     setIsLoading(false);
