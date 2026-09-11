@@ -17,7 +17,7 @@ const REGIONAL_CLUSTERS = [
 
 /**
  * IEC Class II/III Turbine S-Curve conversion from 100m wind speed (km/h) to Capacity Factor (0..1)
- * Includes 0.80 fleet availability/loss factor (wake loss, maintenance, array curtailment)
+ * Includes 0.82 fleet availability/loss factor (wake loss, maintenance, array curtailment)
  */
 function speedToCapacityFactor(speedKmh) {
   const vMs = speedKmh / 3.6;
@@ -118,7 +118,8 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
       const pointTime = new Date(now.getTime() + i * 3600 * 1000);
       const dateStr = getLocalDateStr(pointTime);
       const hourNum = pointTime.getHours() + 1; // 1-24 format for IESO
-      const dayName = pointTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const dayName = pointTime.toLocaleDateString('en-US', { weekday: 'short' });
+      const monthDay = pointTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const timeStr = `${pointTime.getHours().toString().padStart(2, '0')}:00`;
 
       // 1. Weather Model Calculations across 5 clusters
@@ -189,6 +190,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         timestamp: pointTime,
         dateStr,
         dayName,
+        monthDay,
         timeStr,
         hourNum,
         iesoMW,
@@ -206,7 +208,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
     return hours;
   }, [vgXmlText, weatherData]);
 
-  // 2. Daily Summary Aggregates (7 Days)
+  // 2. Daily Summary Aggregates (Exactly 7 Calendar Cards)
   const dailySummaries = useMemo(() => {
     const daysMap = new Map();
 
@@ -215,6 +217,8 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         daysMap.set(h.dateStr, {
           dateStr: h.dateStr,
           dayName: h.dayName,
+          monthDay: h.monthDay,
+          firstHourIdx: h.index,
           hours: []
         });
       }
@@ -222,6 +226,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
     });
 
     const summaries = [];
+    let idx = 0;
     daysMap.forEach((dayData, dateStr) => {
       const hours = dayData.hours;
       const avgMW = hours.reduce((acc, h) => acc + h.blendedMW, 0) / hours.length;
@@ -230,17 +235,24 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
       const avgCF = (avgMW / ONTARIO_TOTAL_WIND_CAPACITY) * 100;
       const classification = getWindClassification(avgCF);
 
+      const titleName = idx === 0 ? 'Today' : dayData.dayName;
+
       summaries.push({
         dateStr,
-        dayName: hours[0].dayName,
+        dayName: titleName,
+        monthDay: dayData.monthDay,
+        firstHourIdx: dayData.firstHourIdx,
+        hoursCount: hours.length,
         avgMW: Math.round(avgMW),
         maxMW: Math.round(maxMW),
         minMW: Math.round(minMW),
         avgCF: Math.round(avgCF),
         classification
       });
+      idx++;
     });
 
+    // Exactly 7 calendar cards
     return summaries.slice(0, 7);
   }, [forecastSeries]);
 
@@ -422,7 +434,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         )}
       </div>
 
-      {/* 2. Daily Summary Cards Strip (7-Day Cards) */}
+      {/* 2. Daily Summary Cards Strip (Exactly 7 Calendar Cards) */}
       <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
@@ -441,7 +453,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
               }`}
             >
               <div className="text-xs font-bold text-slate-800">{day.dayName}</div>
-              <div className="text-[10px] text-slate-500 mb-1.5">{day.dateStr.slice(5)}</div>
+              <div className="text-[10px] text-slate-500 mb-1.5">{day.monthDay}</div>
 
               {/* Classification Badge */}
               <div className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border mb-2 inline-block ${day.classification.color}`}>
@@ -563,10 +575,9 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                 );
               })}
 
-              {/* Day Divider Vertical Lines & Date Labels */}
+              {/* Day Divider Vertical Lines & Date Labels (Placed at Midnight) */}
               {dailySummaries.map((day, idx) => {
-                const startHourIdx = idx * 24;
-                const x = getX(startHourIdx);
+                const x = getX(day.firstHourIdx);
                 return (
                   <g key={day.dateStr}>
                     <line 
@@ -582,7 +593,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                       y={paddingTop + 12} 
                       className="text-[10px] font-bold fill-slate-500"
                     >
-                      {day.dayName} ({day.dateStr.slice(5)})
+                      {day.dayName} ({day.monthDay})
                     </text>
                   </g>
                 );
@@ -701,7 +712,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
           {currentHoveredPoint && (
             <div className="absolute top-2 right-4 bg-slate-900/90 backdrop-blur-xs text-white p-3 rounded-lg text-xs shadow-lg space-y-1.5 border border-slate-700 pointer-events-none z-10">
               <div className="font-bold border-b border-slate-700 pb-1 flex items-center justify-between gap-4 text-blue-300">
-                <span>{currentHoveredPoint.dayName} {currentHoveredPoint.timeStr}</span>
+                <span>{currentHoveredPoint.dayName}, {currentHoveredPoint.monthDay} {currentHoveredPoint.timeStr}</span>
                 <span className="text-[10px] text-slate-400">Hour {currentHoveredPoint.index + 1} of 168</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-0.5">
