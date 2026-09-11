@@ -67,92 +67,20 @@ export default function Visualization({ data }) {
   const topGenerators = rankedFacilities.filter(f => f.totalOutputMW >= 80);
   const remainingGenerators = rankedFacilities.filter(f => f.totalOutputMW < 80);
 
-  const formattedCreated = data.createdAt
-    ? new Date(data.createdAt).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      })
-    : 'N/A';
-
   return (
-    <div class="space-y-5">
-      {/* Top Header Bar for Visualization */}
-      <div class="bg-slate-50/80 border border-slate-200/80 rounded-lg p-3 space-y-2 text-xs">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-2">
-            <h2 class="font-bold text-slate-900 text-sm tracking-tight">
-              Visualization
-            </h2>
-            <span class="text-slate-300">•</span>
-            <span class="text-slate-500 font-normal">
-              Unified Output Ranking ({rankedFacilities.length} facilities)
-            </span>
-          </div>
-
-          <div class="text-slate-500 text-[11px]">
-            Report Time: <strong class="text-slate-700">{formattedCreated}</strong>
-          </div>
-        </div>
-
-        {/* Legend Row: Status Colors + Fuel Type Icons */}
-        <div class="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-4 text-[11px] text-slate-600">
-          {/* Status Colors Legend */}
-          <div class="flex items-center gap-3">
-            <span class="font-semibold text-slate-700">Status:</span>
-            <div class="flex items-center gap-1">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-              <span>Generating</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-              <span>Idle</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <span>Outage</span>
-            </div>
-          </div>
-
-          {/* Fuel Type Icons Legend */}
-          <div class="flex items-center gap-3.5 flex-wrap">
-            <span class="font-semibold text-slate-700">Fuel Icons:</span>
-            <div class="flex items-center gap-1 text-slate-700">
-              <Atom class="w-4 h-4 text-blue-600" />
-              <span>Nuclear</span>
-            </div>
-            <div class="flex items-center gap-1 text-slate-700">
-              <Flame class="w-4 h-4 text-orange-600" />
-              <span>Gas</span>
-            </div>
-            <div class="flex items-center gap-1 text-slate-700">
-              <Waves class="w-4 h-4 text-cyan-600" />
-              <span>Hydro</span>
-            </div>
-            <div class="flex items-center gap-1 text-slate-700">
-              <Wind class="w-4 h-4 text-emerald-600" />
-              <span>Wind</span>
-            </div>
-            <div class="flex items-center gap-1 text-slate-700">
-              <BatteryCharging class="w-4 h-4 text-purple-600" />
-              <span>Batteries</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div class="space-y-4 pt-0.5">
       {/* Part 1: Top Generating Facilities (Generous Visual Cards) */}
       <div>
-        <div class="pt-1 pb-2 border-b border-slate-200 mb-3 flex items-baseline justify-between">
+        <div class="pt-0 pb-1.5 border-b border-slate-200 mb-2.5 flex items-baseline justify-between">
           <h3 class="text-xs font-bold text-slate-900 uppercase tracking-tight">
             Top Generating Facilities (≥ 80 MW)
           </h3>
-          <span class="text-[11px] text-slate-500">
+          <span class="text-[11px] text-slate-500 font-medium">
             {topGenerators.length} facilities
           </span>
         </div>
 
-        <div class="flex flex-wrap items-stretch gap-3">
+        <div class="flex flex-wrap items-stretch gap-2.5">
           {topGenerators.map((fac) => {
             const output = fac.totalOutputMW || 0;
             const IconComponent = FUEL_ICONS[fac.fuelCategory] || Sparkles;
@@ -244,11 +172,11 @@ export default function Visualization({ data }) {
 
       {/* Part 2: Remaining Facilities (Compact 100% Readable Ranked List) */}
       <div>
-        <div class="pt-2 pb-2 border-b border-slate-200 mb-3 flex items-baseline justify-between">
+        <div class="pt-2 pb-1.5 border-b border-slate-200 mb-2.5 flex items-baseline justify-between">
           <h3 class="text-xs font-bold text-slate-900 uppercase tracking-tight">
             Additional Facilities (under 80 MW & Idle / Outage)
           </h3>
-          <span class="text-[11px] text-slate-500">
+          <span class="text-[11px] text-slate-500 font-medium">
             {remainingGenerators.length} facilities
           </span>
         </div>
