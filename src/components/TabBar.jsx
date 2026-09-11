@@ -13,7 +13,7 @@ export default function TabBar({ activeTab, onSelectTab }) {
         }`}
       >
         <LayoutList class="w-3.5 h-3.5" />
-        <span>Summary</span>
+        <span>Generation Summary</span>
       </button>
 
       <button
@@ -25,7 +25,7 @@ export default function TabBar({ activeTab, onSelectTab }) {
         }`}
       >
         <PieChart class="w-3.5 h-3.5" />
-        <span>Visualization</span>
+        <span>Generation Visualization</span>
       </button>
 
       <button
