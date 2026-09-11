@@ -9,6 +9,7 @@ import OutageVisualization from './components/OutageVisualization';
 import OutagesSummary from './components/OutagesSummary';
 import MixUtilization from './components/MixUtilization';
 import Movements from './components/Movements';
+import WindOutlook from './components/WindOutlook';
 import DetailDrawer from './components/DetailDrawer';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
@@ -24,6 +25,8 @@ const INITIAL_LIMIT = 18;
 export default function App() {
   const [xmlText, setXmlText] = useState(null);
   const [adequacyXmlText, setAdequacyXmlText] = useState(null);
+  const [vgXmlText, setVgXmlText] = useState(null);
+  const [weatherData, setWeatherData] = useState(null);
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -157,6 +160,34 @@ export default function App() {
       } catch (aErr3) {
         console.warn('Adequacy live fallback fetch error:', aErr3);
       }
+    }
+
+    // Fetch official IESO Variable Generation (VG) Forecast XML
+    try {
+      const vgRes = await fetch('/api/ieso-vg-forecast');
+      if (vgRes.ok) {
+        const vgText = await vgRes.text();
+        setVgXmlText(vgText);
+      } else {
+        const directVg = await fetch('https://reports-public.ieso.ca/public/VGForecastSummary/PUB_VGForecastSummary.xml');
+        if (directVg.ok) setVgXmlText(await directVg.text());
+      }
+    } catch (vErr) {
+      console.warn('VG forecast fetch error:', vErr);
+    }
+
+    // Fetch Open-Meteo Wind Weather Forecast (ECMWF & GFS)
+    try {
+      const wRes = await fetch('/api/wind-weather-forecast');
+      if (wRes.ok) {
+        const wJson = await wRes.json();
+        setWeatherData(wJson);
+      } else {
+        const directW = await fetch('https://api.open-meteo.com/v1/forecast?latitude=43.8,42.4,44.0,44.5,46.5&longitude=-81.3,-82.0,-80.0,-76.0,-84.0&hourly=wind_speed_100m,wind_speed_10m&models=ecmwf_ifs025,gfs_seamless');
+        if (directW.ok) setWeatherData(await directW.json());
+      }
+    } catch (wErr) {
+      console.warn('Weather forecast fetch error:', wErr);
     }
 
     if (fetchedXml) {
@@ -444,6 +475,18 @@ export default function App() {
                   data={data}
                   onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
                   onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
+                />
+              </main>
+            )}
+
+            {/* Tab: Wind Outlook 7-Day Forecast View */}
+            {activeTab === 'wind_outlook' && (
+              <main className="py-1">
+                <WindOutlook
+                  data={data}
+                  vgXmlText={vgXmlText}
+                  weatherData={weatherData}
+                  onRefresh={fetchReport}
                 />
               </main>
             )}
