@@ -30,7 +30,6 @@ export default function Visualization({ data }) {
         statusLabel = 'Idle';
       }
 
-      const fuelKey = (fac.fuelType || '').toUpperCase();
       let sectionFuelKey = section.key;
 
       if (sectionFuelKey === SECTION_KEYS.NUCLEAR) sectionFuelKey = 'NUCLEAR';
@@ -58,6 +57,16 @@ export default function Visualization({ data }) {
     return b.totalCapabilityMW - a.totalCapabilityMW;
   });
 
+  // Assign rank numbers
+  const rankedFacilities = allFacilities.map((fac, idx) => ({
+    ...fac,
+    rank: idx + 1
+  }));
+
+  // Partition into Top Generators (producing >= 80 MW) and Remaining Generators
+  const topGenerators = rankedFacilities.filter(f => f.totalOutputMW >= 80);
+  const remainingGenerators = rankedFacilities.filter(f => f.totalOutputMW < 80);
+
   const formattedCreated = data.createdAt
     ? new Date(data.createdAt).toLocaleTimeString('en-US', {
         hour: 'numeric',
@@ -67,7 +76,7 @@ export default function Visualization({ data }) {
     : 'N/A';
 
   return (
-    <div class="space-y-4">
+    <div class="space-y-5">
       {/* Top Header Bar for Visualization */}
       <div class="bg-slate-50/80 border border-slate-200/80 rounded-lg p-3 space-y-2 text-xs">
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -77,7 +86,7 @@ export default function Visualization({ data }) {
             </h2>
             <span class="text-slate-300">•</span>
             <span class="text-slate-500 font-normal">
-              Ontario Facility Output Ranking ({allFacilities.length} facilities)
+              Unified Output Ranking ({rankedFacilities.length} facilities)
             </span>
           </div>
 
@@ -132,101 +141,187 @@ export default function Visualization({ data }) {
         </div>
       </div>
 
-      {/* Unified Output-Ranked Wrapping Grid */}
-      <div class="flex flex-wrap items-end gap-2.5 py-1">
-        {allFacilities.map((fac) => {
-          const output = fac.totalOutputMW || 0;
-          const IconComponent = FUEL_ICONS[fac.fuelCategory] || Sparkles;
+      {/* Part 1: Top Generating Facilities (Generous Visual Cards) */}
+      <div>
+        <div class="pt-1 pb-2 border-b border-slate-200 mb-3 flex items-baseline justify-between">
+          <h3 class="text-xs font-bold text-slate-900 uppercase tracking-tight">
+            Top Generating Facilities (≥ 80 MW)
+          </h3>
+          <span class="text-[11px] text-slate-500">
+            {topGenerators.length} facilities
+          </span>
+        </div>
 
-          // Refined Sizing: Larger Icons (20px - 34px) & Generous Cards (62px - 125px)
-          const boxWidth = Math.min(125, Math.max(62, Math.round(62 + Math.sqrt(output) * 0.75)));
-          const boxHeight = Math.min(115, Math.max(58, Math.round(58 + Math.sqrt(output) * 0.70)));
-          const iconSize = Math.min(34, Math.max(20, Math.round(20 + Math.sqrt(output) * 0.22)));
+        <div class="flex flex-wrap items-stretch gap-3">
+          {topGenerators.map((fac) => {
+            const output = fac.totalOutputMW || 0;
+            const IconComponent = FUEL_ICONS[fac.fuelCategory] || Sparkles;
 
-          let statusStyle = 'bg-emerald-50/80 text-emerald-700 border-emerald-300 hover:bg-emerald-100 shadow-2xs';
+            const boxWidth = Math.min(170, Math.max(135, Math.round(135 + Math.sqrt(output) * 0.45)));
 
-          if (fac.status === 'idle') {
-            statusStyle = 'bg-amber-50/80 text-amber-700 border-amber-300 hover:bg-amber-100 shadow-2xs';
-          } else if (fac.status === 'outage') {
-            statusStyle = 'bg-rose-50/80 text-rose-700 border-rose-300 hover:bg-rose-100 shadow-2xs';
-          }
+            let statusStyle = 'bg-emerald-50/70 text-emerald-700 border-emerald-300 hover:bg-emerald-100 shadow-2xs';
+            let dotBg = 'bg-emerald-500';
 
-          return (
-            <div key={fac.name} class="relative group">
-              {/* Aggregated Facility Card with Larger Symbols & Refined Text */}
-              <div
-                style={{ width: `${boxWidth}px`, height: `${boxHeight}px` }}
-                class={`rounded-lg border p-1.5 flex flex-col items-center justify-between cursor-pointer select-none transition-transform hover:scale-105 ${statusStyle}`}
-              >
-                {/* Top: Larger Fuel Type Symbol */}
-                <IconComponent style={{ width: `${iconSize}px`, height: `${iconSize}px` }} class="shrink-0" />
+            if (fac.status === 'idle') {
+              statusStyle = 'bg-amber-50/70 text-amber-700 border-amber-300 hover:bg-amber-100 shadow-2xs';
+              dotBg = 'bg-amber-400';
+            } else if (fac.status === 'outage') {
+              statusStyle = 'bg-rose-50/70 text-rose-700 border-rose-300 hover:bg-rose-100 shadow-2xs';
+              dotBg = 'bg-rose-500';
+            }
 
-                {/* Middle: Prominent MW Output */}
-                <div class="text-center font-mono font-bold leading-tight my-0.5">
-                  <span class="text-xs sm:text-sm text-slate-900 block tracking-tight">
-                    {output.toLocaleString()}
-                  </span>
-                  <span class="text-[9px] text-slate-500 font-sans uppercase block -mt-0.5">MW</span>
-                </div>
-
-                {/* Bottom: Crisp Plant / Facility Name */}
-                <div class="text-[9.5px] font-semibold text-slate-700 truncate w-full text-center leading-none tracking-tight px-0.5">
-                  {fac.name}
-                </div>
-              </div>
-
-              {/* Rich Hover Tooltip */}
-              <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[180px]">
-                <div class="font-bold border-b border-slate-700 pb-1 mb-1 flex items-center justify-between gap-2">
-                  <span>{fac.name}</span>
-                  <span class={`text-[9px] px-1.5 py-0 rounded font-sans uppercase font-bold ${
-                    fac.status === 'generating' ? 'bg-emerald-500/30 text-emerald-300' :
-                    fac.status === 'idle' ? 'bg-amber-500/30 text-amber-300' :
-                    'bg-rose-500/30 text-rose-300'
-                  }`}>
-                    {fac.statusLabel}
-                  </span>
-                </div>
-
-                <div class="space-y-0.5 text-[10px] font-mono text-slate-300">
-                  <div class="flex justify-between">
-                    <span class="text-slate-400 font-sans">Fuel Category:</span>
-                    <span class="text-slate-200">{fac.sectionKey}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-slate-400 font-sans">Current Output:</span>
-                    <span class="text-emerald-400 font-bold">{fac.totalOutputMW.toLocaleString()} MW</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-slate-400 font-sans">Capability:</span>
-                    <span>{fac.totalCapabilityMW.toLocaleString()} MW</span>
-                  </div>
-                  <div class="flex justify-between border-t border-slate-800 pt-0.5 mt-0.5">
-                    <span class="text-slate-400 font-sans">Utilization:</span>
-                    <span class="text-cyan-400">{fac.utilization.toFixed(1)}%</span>
-                  </div>
-                  {fac.units && fac.units.length > 0 && (
-                    <div class="border-t border-slate-800 pt-1 mt-1 text-[9.5px]">
-                      <span class="text-slate-400 font-sans block mb-0.5">Units ({fac.units.length}):</span>
-                      <div class="max-h-24 overflow-y-auto space-y-0.5">
-                        {fac.units.map(u => (
-                          <div key={u.genName} class="flex justify-between">
-                            <span>{u.shortLabel} ({u.genName})</span>
-                            <span class={u.outputMW > 0 ? 'text-emerald-400' : 'text-slate-500'}>
-                              {u.outputMW} MW
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+            return (
+              <div key={fac.name} class="relative group">
+                {/* Generous Visual Card */}
+                <div
+                  style={{ width: `${boxWidth}px` }}
+                  class={`rounded-lg border p-2.5 flex flex-col justify-between cursor-pointer select-none transition-transform hover:scale-102 ${statusStyle}`}
+                >
+                  {/* Top: Rank + Fuel Icon + Status Dot */}
+                  <div class="flex items-center justify-between gap-1 w-full">
+                    <span class="text-[10px] font-mono font-bold text-slate-400">
+                      #{fac.rank}
+                    </span>
+                    <div class="flex items-center gap-1">
+                      <IconComponent class="w-4 h-4" />
+                      <span class={`w-2 h-2 rounded-full ${dotBg}`}></span>
                     </div>
-                  )}
+                  </div>
+
+                  {/* Middle: Prominent Output MW */}
+                  <div class="my-1.5 font-mono font-bold text-slate-900 tracking-tight">
+                    <span class="text-base block leading-none">
+                      {output.toLocaleString()}
+                    </span>
+                    <span class="text-[9.5px] text-slate-500 font-sans uppercase block mt-0.5">MW Output</span>
+                  </div>
+
+                  {/* Bottom: Fully Legible Facility Name */}
+                  <div class="text-xs font-bold text-slate-900 leading-tight tracking-tight">
+                    {fac.name}
+                  </div>
                 </div>
 
-                <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+                {/* Rich Hover Tooltip */}
+                <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[180px]">
+                  <div class="font-bold border-b border-slate-700 pb-1 mb-1 flex items-center justify-between gap-2">
+                    <span>#{fac.rank} {fac.name}</span>
+                    <span class={`text-[9px] px-1.5 py-0 rounded font-sans uppercase font-bold ${
+                      fac.status === 'generating' ? 'bg-emerald-500/30 text-emerald-300' :
+                      fac.status === 'idle' ? 'bg-amber-500/30 text-amber-300' :
+                      'bg-rose-500/30 text-rose-300'
+                    }`}>
+                      {fac.statusLabel}
+                    </span>
+                  </div>
+
+                  <div class="space-y-0.5 text-[10px] font-mono text-slate-300">
+                    <div class="flex justify-between">
+                      <span class="text-slate-400 font-sans">Fuel Type:</span>
+                      <span class="text-slate-200">{fac.sectionKey}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400 font-sans">Current Output:</span>
+                      <span class="text-emerald-400 font-bold">{fac.totalOutputMW.toLocaleString()} MW</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400 font-sans">Capability:</span>
+                      <span>{fac.totalCapabilityMW.toLocaleString()} MW</span>
+                    </div>
+                    <div class="flex justify-between border-t border-slate-800 pt-0.5 mt-0.5">
+                      <span class="text-slate-400 font-sans">Utilization:</span>
+                      <span class="text-cyan-400">{fac.utilization.toFixed(1)}%</span>
+                    </div>
+                  </div>
+
+                  <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Part 2: Remaining Facilities (Compact 100% Readable Ranked List) */}
+      <div>
+        <div class="pt-2 pb-2 border-b border-slate-200 mb-3 flex items-baseline justify-between">
+          <h3 class="text-xs font-bold text-slate-900 uppercase tracking-tight">
+            Additional Facilities (under 80 MW & Idle / Outage)
+          </h3>
+          <span class="text-[11px] text-slate-500">
+            {remainingGenerators.length} facilities
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1.5">
+          {remainingGenerators.map((fac) => {
+            const output = fac.totalOutputMW || 0;
+            const IconComponent = FUEL_ICONS[fac.fuelCategory] || Sparkles;
+
+            let dotBg = 'bg-emerald-500';
+            if (fac.status === 'idle') dotBg = 'bg-amber-400';
+            else if (fac.status === 'outage') dotBg = 'bg-rose-500';
+
+            return (
+              <div
+                key={fac.name}
+                class="py-1.5 px-2.5 bg-slate-50/40 hover:bg-slate-100/80 rounded border border-slate-100 flex items-center justify-between gap-2 text-xs transition-colors relative group"
+              >
+                {/* Left: Rank, Name, Fuel Icon */}
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                  <span class="text-[10px] font-mono font-bold text-slate-400 w-6 shrink-0">
+                    #{fac.rank}
+                  </span>
+
+                  <h4 class="font-bold text-slate-900 truncate tracking-tight">
+                    {fac.name}
+                  </h4>
+
+                  <IconComponent class="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                </div>
+
+                {/* Right: Output MW & Status Indicator */}
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="font-mono font-semibold text-slate-800">
+                    {output.toLocaleString()} MW
+                  </span>
+                  <span class={`w-2 h-2 rounded-full ${dotBg}`}></span>
+                </div>
+
+                {/* Hover Tooltip */}
+                <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[180px]">
+                  <div class="font-bold border-b border-slate-700 pb-1 mb-1 flex items-center justify-between gap-2">
+                    <span>#{fac.rank} {fac.name}</span>
+                    <span class={`text-[9px] px-1.5 py-0 rounded font-sans uppercase font-bold ${
+                      fac.status === 'generating' ? 'bg-emerald-500/30 text-emerald-300' :
+                      fac.status === 'idle' ? 'bg-amber-500/30 text-amber-300' :
+                      'bg-rose-500/30 text-rose-300'
+                    }`}>
+                      {fac.statusLabel}
+                    </span>
+                  </div>
+
+                  <div class="space-y-0.5 text-[10px] font-mono text-slate-300">
+                    <div class="flex justify-between">
+                      <span class="text-slate-400 font-sans">Fuel Type:</span>
+                      <span class="text-slate-200">{fac.sectionKey}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400 font-sans">Current Output:</span>
+                      <span class="text-emerald-400 font-bold">{fac.totalOutputMW.toLocaleString()} MW</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400 font-sans">Capability:</span>
+                      <span>{fac.totalCapabilityMW.toLocaleString()} MW</span>
+                    </div>
+                  </div>
+
+                  <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
