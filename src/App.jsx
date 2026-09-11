@@ -3,6 +3,7 @@ import Header from './components/Header';
 import TabBar from './components/TabBar';
 import SectionHeader from './components/SectionHeader';
 import FacilityCard from './components/FacilityCard';
+import GeneratorCard from './components/GeneratorCard';
 import Visualization from './components/Visualization';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
@@ -22,6 +23,7 @@ export default function App() {
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
   const [sortBy, setSortBy] = useState('capability'); // 'capability' | 'output'
+  const [viewMode, setViewMode] = useState('facility'); // 'facility' | 'generator'
   const [activeTab, setActiveTab] = useState('summary'); // 'summary' | 'visual'
 
   // Live vs Historical Archive State
@@ -183,6 +185,8 @@ export default function App() {
           onRefresh={fetchReport}
           sortBy={sortBy}
           onSortChange={handleSortChange}
+          viewMode={viewMode}
+          onViewModeChange={(mode) => setViewMode(mode)}
           isLiveMode={isLiveMode}
           onToggleLiveMode={(live) => setIsLiveMode(live)}
           selectedDate={selectedDate}
@@ -231,6 +235,66 @@ export default function App() {
                   const isNuclear = section.key === SECTION_KEYS.NUCLEAR;
                   const isExpanded = !!expandedSections[section.key];
                   const facilities = section.facilities || [];
+
+                  if (viewMode === 'generator') {
+                    // Generator View: Gather all individual units for this fuel section
+                    const allUnits = [];
+                    facilities.forEach(fac => {
+                      (fac.units || []).forEach(unit => {
+                        allUnits.push(unit);
+                      });
+                    });
+
+                    // Sort units according to sortBy selector
+                    allUnits.sort((a, b) => {
+                      if (sortBy === 'output') {
+                        if (b.outputMW !== a.outputMW) return b.outputMW - a.outputMW;
+                        return b.capabilityMW - a.capabilityMW;
+                      }
+                      return b.capabilityMW - a.capabilityMW;
+                    });
+
+                    const hasMore = allUnits.length > INITIAL_LIMIT;
+                    const visibleUnits = (hasMore && !isExpanded)
+                      ? allUnits.slice(0, INITIAL_LIMIT)
+                      : allUnits;
+
+                    return (
+                      <section key={section.key}>
+                        <SectionHeader section={section} viewMode="generator" />
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3.5 gap-y-1.5">
+                          {visibleUnits.length > 0 ? (
+                            visibleUnits.map((unit) => (
+                              <GeneratorCard key={unit.genName} unit={unit} />
+                            ))
+                          ) : (
+                            <div class="py-2 text-slate-400 text-xs italic">
+                              No generators reported for {section.title} generation.
+                            </div>
+                          )}
+                        </div>
+
+                        {hasMore && (
+                          <div class="mt-1.5 pt-0.5 text-center">
+                            <button
+                              onClick={() => toggleSectionExpand(section.key)}
+                              class="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium py-0.5 px-2.5 rounded hover:bg-blue-50 transition-colors"
+                            >
+                              <span>
+                                {isExpanded
+                                  ? 'Show top 18'
+                                  : `Show all ${allUnits.length} ${section.title.toLowerCase()} generators`}
+                              </span>
+                              {isExpanded ? <ChevronUp class="w-3.5 h-3.5" /> : <ChevronDown class="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        )}
+                      </section>
+                    );
+                  }
+
+                  // Facility View: Aggregate by facility
                   const hasMore = facilities.length > INITIAL_LIMIT;
                   const visibleFacilities = (hasMore && !isExpanded)
                     ? facilities.slice(0, INITIAL_LIMIT)
@@ -242,7 +306,7 @@ export default function App() {
 
                   return (
                     <section key={section.key}>
-                      <SectionHeader section={section} />
+                      <SectionHeader section={section} viewMode="facility" />
 
                       <div class={gridLayoutClass}>
                         {visibleFacilities.length > 0 ? (
@@ -280,7 +344,11 @@ export default function App() {
             {/* Tab 2: Unified Visualization Ranking Chart View */}
             {activeTab === 'visual' && (
               <main class="py-1">
-                <Visualization data={data} />
+                <Visualization
+                  data={data}
+                  viewMode={viewMode}
+                  onViewModeChange={(mode) => setViewMode(mode)}
+                />
               </main>
             )}
           </>

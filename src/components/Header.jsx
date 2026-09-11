@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, ArrowDownWideNarrow, Calendar, Clock, History, Check } from 'lucide-react';
+import { RefreshCw, ArrowDownWideNarrow, Calendar, Clock, History, Check, Layers, Cpu } from 'lucide-react';
 
 export default function Header({
   createdAt,
@@ -8,6 +8,8 @@ export default function Header({
   onRefresh,
   sortBy,
   onSortChange,
+  viewMode = 'facility',
+  onViewModeChange,
   isLiveMode,
   onToggleLiveMode,
   selectedDate,
@@ -80,6 +82,34 @@ export default function Header({
             >
               <Calendar class="w-3 h-3" />
               <span>Archive</span>
+            </button>
+          </div>
+
+          {/* View Mode Toggle: Facility vs Generator */}
+          <div class="flex items-center rounded border border-slate-200 p-0.5 bg-slate-50">
+            <button
+              onClick={() => onViewModeChange && onViewModeChange('facility')}
+              class={`px-2 py-0.5 rounded font-medium transition-colors flex items-center gap-1 ${
+                viewMode === 'facility'
+                  ? 'bg-white text-blue-900 font-bold shadow-xs border border-slate-200'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Group generators by facility"
+            >
+              <Layers class="w-3 h-3 text-blue-600" />
+              <span>Facility View</span>
+            </button>
+            <button
+              onClick={() => onViewModeChange && onViewModeChange('generator')}
+              class={`px-2 py-0.5 rounded font-medium transition-colors flex items-center gap-1 ${
+                viewMode === 'generator'
+                  ? 'bg-white text-purple-900 font-bold shadow-xs border border-slate-200'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Show individual generator units"
+            >
+              <Cpu class="w-3 h-3 text-purple-600" />
+              <span>Generator View</span>
             </button>
           </div>
 
