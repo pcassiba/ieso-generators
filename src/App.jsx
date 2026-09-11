@@ -8,6 +8,7 @@ import Visualization from './components/Visualization';
 import OutagesSummary from './components/OutagesSummary';
 import OutageVisualization from './components/OutageVisualization';
 import MixUtilization from './components/MixUtilization';
+import Movements from './components/Movements';
 import DetailDrawer from './components/DetailDrawer';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
@@ -374,6 +375,17 @@ export default function App() {
                 <MixUtilization
                   data={data}
                   onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                />
+              </main>
+            )}
+
+            {/* Tab: Hour-over-Hour Movements View */}
+            {activeTab === 'movements' && (
+              <main class="py-1">
+                <Movements
+                  data={data}
+                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                  onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
                 />
               </main>
             )}
