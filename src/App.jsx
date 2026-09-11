@@ -3,7 +3,7 @@ import Header from './components/Header';
 import TabBar from './components/TabBar';
 import SectionHeader from './components/SectionHeader';
 import FacilityCard from './components/FacilityCard';
-import VisualSummary from './components/VisualSummary';
+import Visualization from './components/Visualization';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
@@ -194,7 +194,7 @@ export default function App() {
           nextRefreshTimeStr={nextRefreshTimeStr}
         />
 
-        {/* Tab Navigation Bar: Summary vs Visual Summary */}
+        {/* Tab Navigation Bar: Summary vs Visualization */}
         <TabBar activeTab={activeTab} onSelectTab={(tab) => setActiveTab(tab)} />
 
         {/* Error Notification */}
@@ -277,10 +277,10 @@ export default function App() {
               </main>
             )}
 
-            {/* Tab 2: Visual Summary Data Visualization View */}
+            {/* Tab 2: Unified Visualization Ranking Chart View */}
             {activeTab === 'visual' && (
-              <main class="py-2">
-                <VisualSummary data={data} />
+              <main class="py-1">
+                <Visualization data={data} />
               </main>
             )}
           </>
