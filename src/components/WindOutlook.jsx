@@ -2,10 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { 
   Wind, TrendingUp, TrendingDown, AlertTriangle, Zap, Gauge, 
   Calendar, Layers, Info, MapPin, Activity, Flame, ShieldAlert,
-  Compass, ArrowUpRight, ArrowDownRight, RefreshCw, BarChart2
+  Compass, RefreshCw, BarChart2
 } from 'lucide-react';
 
-const ONTARIO_TOTAL_WIND_CAPACITY = 5500; // MW
+const ONTARIO_TOTAL_WIND_CAPACITY = 5500; // MW total installed wind
 
 const REGIONAL_CLUSTERS = [
   { id: 'southwest', name: 'Southwest (Chatham / Lambton / Essex)', lat: 42.4, lon: -82.0, capacity: 2200, locationIdx: 1 },
@@ -17,53 +17,67 @@ const REGIONAL_CLUSTERS = [
 
 /**
  * IEC Class II/III Turbine S-Curve conversion from 100m wind speed (km/h) to Capacity Factor (0..1)
+ * Includes 0.80 fleet availability/loss factor (wake loss, maintenance, array curtailment)
  */
 function speedToCapacityFactor(speedKmh) {
   const vMs = speedKmh / 3.6;
   if (vMs <= 3.0) return 0;
   if (vMs >= 25.0) return 0; // Cut-out storm shutdown
-  if (vMs >= 12.0) return 1.0; // Rated power
-  const x = (vMs - 3.0) / (12.0 - 3.0);
-  return Math.min(1.0, Math.max(0, 3 * x * x - 2 * x * x * x));
+  if (vMs >= 13.0) return 0.82; // Rated power with fleet loss factor
+  const x = (vMs - 3.0) / (13.0 - 3.0);
+  const rawCF = 3 * x * x - 2 * x * x * x;
+  return Math.min(0.82, Math.max(0, rawCF * 0.82));
 }
 
 /**
- * Helper to parse IESO PUB_VGForecastSummary.xml text
+ * Formats local date as YYYY-MM-DD to match IESO ForecastDate
+ */
+function getLocalDateStr(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Parses official IESO PUB_VGForecastSummary.xml text for Wind forecast MW
+ * Sums Market Participant (Grid) + Embedded wind generators for OntarioTotal
  */
 function parseVgXml(xmlText) {
-  if (!xmlText) return [];
+  if (!xmlText) return new Map();
   try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlText, 'text/xml');
-    const fuelDataNodes = Array.from(doc.getElementsByTagName('FuelData'));
-    const results = [];
+    const fuelBlocks = xmlText.split('<FuelData>').filter(b => b.includes('<FuelType>Wind</FuelType>'));
+    const map = new Map(); // key: 'YYYY-MM-DD-H' -> mw
 
-    fuelDataNodes.forEach(fuelNode => {
-      const fuelType = fuelNode.getElementsByTagName('FuelType')[0]?.textContent || '';
-      if (fuelType.trim().toLowerCase() === 'wind') {
-        const resourceNodes = Array.from(fuelNode.getElementsByTagName('ResourceData'));
-        resourceNodes.forEach(resNode => {
-          const zone = resNode.getElementsByTagName('ZoneName')[0]?.textContent || 'ONTARIOTOTAL';
-          const energyForecasts = Array.from(resNode.getElementsByTagName('EnergyForecast'));
-          energyForecasts.forEach(ef => {
-            const dateStr = ef.getElementsByTagName('ForecastDate')[0]?.textContent;
-            const intervals = Array.from(ef.getElementsByTagName('ForecastInterval'));
+    fuelBlocks.forEach(fb => {
+      const resBlocks = fb.split('<ResourceData>');
+      resBlocks.forEach(rb => {
+        const zoneMatch = rb.match(/<ZoneName>(.*?)<\/ZoneName>/);
+        if (!zoneMatch) return;
+        const zone = zoneMatch[1].trim().toUpperCase();
+
+        if (zone === 'ONTARIOTOTAL') {
+          const efs = rb.split('<EnergyForecast>').slice(1);
+          efs.forEach(ef => {
+            const dateStr = ef.match(/<ForecastDate>(.*?)<\/ForecastDate>/)?.[1];
+            const intervals = Array.from(ef.matchAll(/<ForecastHour>(.*?)<\/ForecastHour>[\s\S]*?<MWOutput>(.*?)<\/MWOutput>/g));
             intervals.forEach(inv => {
-              const hour = parseInt(inv.getElementsByTagName('ForecastHour')[0]?.textContent || '1', 10);
-              const mw = parseFloat(inv.getElementsByTagName('MWOutput')[0]?.textContent || '0');
+              const hour = parseInt(inv[1], 10);
+              const mw = parseFloat(inv[2]);
               if (dateStr && !isNaN(hour)) {
-                results.push({ zone, dateStr, hour, mw });
+                const key = `${dateStr}-${hour}`;
+                map.set(key, (map.get(key) || 0) + mw);
               }
             });
           });
-        });
-      }
+        }
+      });
     });
 
-    return results;
+    return map;
   } catch (err) {
     console.warn('Failed to parse IESO VG Forecast XML:', err);
-    return [];
+    return new Map();
   }
 }
 
@@ -95,20 +109,14 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
   const forecastSeries = useMemo(() => {
     const hours = [];
     const now = new Date();
-    const iesoPoints = parseVgXml(vgXmlText);
-
-    // Map IESO ONTARIOTOTAL points by index if available
-    const iesoMap = new Map();
-    iesoPoints.filter(p => p.zone === 'ONTARIOTOTAL').forEach(p => {
-      iesoMap.set(`${p.dateStr}-${p.hour}`, p.mw);
-    });
+    const iesoMap = parseVgXml(vgXmlText);
 
     // Check if weather data is valid array of locations
     const hasWeatherData = Array.isArray(weatherData) && weatherData.length >= 5;
 
     for (let i = 0; i < 168; i++) {
       const pointTime = new Date(now.getTime() + i * 3600 * 1000);
-      const dateStr = pointTime.toISOString().split('T')[0];
+      const dateStr = getLocalDateStr(pointTime);
       const hourNum = pointTime.getHours() + 1; // 1-24 format for IESO
       const dayName = pointTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const timeStr = `${pointTime.getHours().toString().padStart(2, '0')}:00`;
@@ -119,19 +127,18 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
       const clusterDetails = [];
 
       REGIONAL_CLUSTERS.forEach(cluster => {
-        let ecmwfSpeed = 18; // default km/h (~5 m/s)
-        let gfsSpeed = 17;
+        let ecmwfSpeed = 16; // default km/h (~4.4 m/s)
+        let gfsSpeed = 15;
 
         if (hasWeatherData && weatherData[cluster.locationIdx]?.hourly) {
           const hourly = weatherData[cluster.locationIdx].hourly;
           const timeIdx = i < hourly.time?.length ? i : 0;
-          ecmwfSpeed = hourly.wind_speed_100m_ecmwf_ifs025?.[timeIdx] ?? 18;
-          gfsSpeed = hourly.wind_speed_100m_gfs_seamless?.[timeIdx] ?? 17;
+          ecmwfSpeed = hourly.wind_speed_100m_ecmwf_ifs025?.[timeIdx] ?? 16;
+          gfsSpeed = hourly.wind_speed_100m_gfs_seamless?.[timeIdx] ?? 15;
         } else {
-          // Synthetic realistic wave pattern if API pending
-          const wave = Math.sin((i + cluster.locationIdx * 4) / 12 * Math.PI) * 12 + 20;
-          ecmwfSpeed = Math.max(5, wave + (i % 5));
-          gfsSpeed = Math.max(5, wave - (i % 7));
+          const wave = Math.sin((i + cluster.locationIdx * 4) / 12 * Math.PI) * 10 + 15;
+          ecmwfSpeed = Math.max(4, wave + (i % 4));
+          gfsSpeed = Math.max(4, wave - (i % 5));
         }
 
         const ecmwfCF = speedToCapacityFactor(ecmwfSpeed);
@@ -155,27 +162,25 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         });
       });
 
-      // 2. Official IESO Forecast Point
-      let iesoMW = iesoMap.get(`${dateStr}-${hourNum}`) ?? null;
-      if (iesoMW === null && i < 48) {
-        // Fallback smooth curve for first 48 hours if XML not yet fetched
-        iesoMW = (ecmwfMW + gfsMW) / 2;
-      }
+      // 2. Official IESO Forecast Point lookup
+      const iesoMW = iesoMap.get(`${dateStr}-${hourNum}`) ?? null;
 
-      // 3. Smooth Blended Forecast (Hours 0-36 IESO, Hours 36-48 Smooth Transition, Hours 48-168 Weather)
+      // 3. Smooth Blended Forecast
       let blendedMW = ecmwfMW;
-      if (i < 36 && iesoMW !== null) {
-        blendedMW = iesoMW;
-      } else if (i >= 36 && i < 48 && iesoMW !== null) {
-        const ratio = (48 - i) / 12;
-        blendedMW = ratio * iesoMW + (1 - ratio) * ecmwfMW;
+      if (iesoMW !== null) {
+        if (i < 36) {
+          blendedMW = iesoMW;
+        } else if (i < 48) {
+          const ratio = (48 - i) / 12;
+          blendedMW = ratio * iesoMW + (1 - ratio) * ecmwfMW;
+        }
       }
 
       // 4. Uncertainty range (min/max of models)
       const minMW = Math.min(ecmwfMW, gfsMW, iesoMW ?? ecmwfMW);
       const maxMW = Math.max(ecmwfMW, gfsMW, iesoMW ?? ecmwfMW);
 
-      // 5. Net Load calculation (Baseline Ontario Demand ~14,000 to 19,000 MW - Wind)
+      // 5. Net Load calculation
       const baselineDemand = 15500 + Math.sin((i - 7) / 24 * 2 * Math.PI) * 2500;
       const netLoadMW = baselineDemand - blendedMW;
 
@@ -871,7 +876,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {REGIONAL_CLUSTERS.map(cluster => {
             const samplePoint = forecastSeries[0]?.clusters.find(c => c.id === cluster.id);
-            const speedKmh = samplePoint ? samplePoint.ecmwfSpeed : 18;
+            const speedKmh = samplePoint ? samplePoint.ecmwfSpeed : 16;
             const speedMs = (speedKmh / 3.6).toFixed(1);
             const cfPercent = samplePoint ? Math.round(samplePoint.cf) : 25;
             const currentMw = samplePoint ? Math.round(samplePoint.ecmwfMW) : Math.round(cluster.capacity * 0.25);
@@ -924,7 +929,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         <div className="space-y-1 leading-relaxed text-[11px]">
           <p className="font-semibold text-blue-900">How to read the Wind Outlook:</p>
           <p>
-            The official IESO 48-Hour Variable Generation Forecast is retrieved directly from <code className="bg-blue-100/80 px-1 py-0.5 rounded text-blue-900 font-mono">PUB_VGForecastSummary.xml</code>. 
+            The official IESO 48-Hour Variable Generation Forecast is retrieved directly from <code className="bg-blue-100/80 px-1 py-0.5 rounded text-blue-900 font-mono">PUB_VGForecastSummary.xml</code> (combining Grid Market Participant + Embedded wind generators). 
             For days 3 through 7, numerical weather prediction model wind speeds at 100m turbine hub height (ECMWF IFS & GFS) are retrieved via Open-Meteo and converted to electrical generation MW using an IEC Class II/III power curve aggregated across Ontario's 5 major wind clusters.
           </p>
         </div>
