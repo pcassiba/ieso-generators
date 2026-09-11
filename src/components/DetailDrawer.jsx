@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, Atom, Flame, Waves, Wind, BatteryCharging, Sparkles, Zap, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
-import { SECTION_KEYS } from '../utils/iesoParser';
+import { SECTION_KEYS, formatHoH } from '../utils/iesoParser';
 
 const FUEL_ICONS = {
   'Nuclear': Atom,
@@ -67,6 +67,7 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
   const totalOutput = targetFacility.totalOutputMW || 0;
   const totalCap = targetFacility.installedRatingMW || targetFacility.totalCapabilityMW || 0;
   const utilization = totalCap > 0 ? (totalOutput / totalCap) * 100 : 0;
+  const facHohStr = formatHoH(targetFacility.totalMwChange, targetFacility.totalPctChange, false);
 
   const onlineUnits = targetFacility.units.filter(u => u.status === 'online');
   const idleUnits = targetFacility.units.filter(u => u.status === 'idle');
@@ -143,6 +144,14 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
                   <strong class="text-sm text-slate-900">{targetUnit.capabilityMW.toLocaleString()} MW</strong>
                 </div>
               </div>
+
+              {/* HoH Detail Breakdown */}
+              {targetUnit.prevOutputMW !== null && (
+                <div class="pt-1 border-t border-blue-200/60 flex items-center justify-between text-[11px] font-mono text-slate-600">
+                  <span>Prev Hour: <strong class="text-slate-800">{targetUnit.prevOutputMW.toLocaleString()} MW</strong></span>
+                  <span>HoH Change: <strong class="text-blue-900">{formatHoH(targetUnit.mwChange, targetUnit.pctChange, false) || '0 MW'}</strong></span>
+                </div>
+              )}
             </div>
           )}
 
@@ -184,6 +193,14 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
               </div>
             </div>
 
+            {/* Hour-over-Hour Summary Line */}
+            {facHohStr && (
+              <div class="text-[11px] text-slate-600 bg-white p-2 rounded border border-slate-100 flex items-center justify-between font-mono">
+                <span class="text-slate-500 font-sans">Hour-over-Hour Output Change:</span>
+                <strong class="text-slate-900">{facHohStr}</strong>
+              </div>
+            )}
+
             {/* Unit Status Breakdown Pills */}
             <div class="flex items-center justify-around gap-2 text-[11px]">
               <div class="flex items-center gap-1.5 text-emerald-800 font-medium">
@@ -217,6 +234,7 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
             <div class="space-y-1.5">
               {targetFacility.units.map((unit) => {
                 const isSelected = targetUnit && targetUnit.genName === unit.genName;
+                const unitHohStr = formatHoH(unit.mwChange, unit.pctChange, true);
 
                 let dotBg = 'bg-emerald-500';
                 let statusBadgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
@@ -254,13 +272,17 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
                       </div>
                     </div>
 
-                    {/* Right: Output & Capability MW */}
+                    {/* Right: Output & Capability MW + HoH Change */}
                     <div class="text-right font-mono shrink-0">
                       <div class="font-bold text-slate-900">
                         {unit.outputMW.toLocaleString()} MW
                       </div>
-                      <div class="text-[10px] text-slate-400 font-sans">
-                        of {unit.capabilityMW.toLocaleString()} MW cap
+                      <div class="text-[10px] text-slate-500">
+                        {unitHohStr ? (
+                          <span class="font-semibold">{unitHohStr}</span>
+                        ) : (
+                          <span>of {unit.capabilityMW.toLocaleString()} MW cap</span>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Atom, Flame, Waves, Wind, BatteryCharging, Sparkles, Layers, Cpu } from 'lucide-react';
-import { SECTION_KEYS } from '../utils/iesoParser';
+import { SECTION_KEYS, formatHoH } from '../utils/iesoParser';
 
 const FUEL_ICONS = {
   'NUCLEAR': Atom,
@@ -55,6 +55,9 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
             fuelCategory: sectionFuelKey,
             sectionKey: section.key,
             outputMW: unit.outputMW || 0,
+            prevOutputMW: unit.prevOutputMW,
+            mwChange: unit.mwChange || 0,
+            pctChange: unit.pctChange || 0,
             capabilityMW: unit.capabilityMW || 0,
             status,
             statusLabel,
@@ -80,6 +83,9 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
           fuelCategory: sectionFuelKey,
           sectionKey: section.key,
           outputMW: fac.totalOutputMW || 0,
+          prevOutputMW: fac.totalPrevOutputMW,
+          mwChange: fac.totalMwChange || 0,
+          pctChange: fac.totalPctChange || 0,
           capabilityMW: fac.totalCapabilityMW || 0,
           status,
           statusLabel,
@@ -164,6 +170,8 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
           {topItems.map((item) => {
             const output = item.outputMW || 0;
             const IconComponent = FUEL_ICONS[item.fuelCategory] || Sparkles;
+            const hohStrCompact = formatHoH(item.mwChange, item.pctChange, true);
+            const hohStrFull = formatHoH(item.mwChange, item.pctChange, false);
 
             const boxWidth = Math.min(175, Math.max(135, Math.round(135 + Math.sqrt(output) * 0.45)));
 
@@ -197,12 +205,19 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
                     </div>
                   </div>
 
-                  {/* Middle: Prominent Output MW */}
-                  <div class="my-1.5 font-mono font-bold text-slate-900 tracking-tight">
+                  {/* Middle: Prominent Output MW + Compact HoH Indicator */}
+                  <div class="my-1 font-mono font-bold text-slate-900 tracking-tight">
                     <span class="text-base block leading-none">
                       {output.toLocaleString()}
                     </span>
-                    <span class="text-[9.5px] text-slate-500 font-sans uppercase block mt-0.5">MW Output</span>
+                    <div class="flex items-center justify-between gap-1 text-[9.5px] text-slate-500 font-sans uppercase font-normal mt-0.5">
+                      <span>MW Output</span>
+                      {hohStrCompact && (
+                        <span class="font-mono text-slate-600 font-semibold lowercase">
+                          {hohStrCompact}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Bottom: Fully Legible Item Name */}
@@ -216,8 +231,8 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
                   )}
                 </div>
 
-                {/* Rich Hover Tooltip */}
-                <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[180px]">
+                {/* Rich Hover Tooltip with HoH Detail */}
+                <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[190px]">
                   <div class="font-bold border-b border-slate-700 pb-1 mb-1 flex items-center justify-between gap-2">
                     <span>#{item.rank} {item.displayName}</span>
                     <span class={`text-[9px] px-1.5 py-0 rounded font-sans uppercase font-bold ${
@@ -244,6 +259,18 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
                       <span class="text-slate-400 font-sans">Current Output:</span>
                       <span class="text-emerald-400 font-bold">{item.outputMW.toLocaleString()} MW</span>
                     </div>
+                    {item.prevOutputMW !== null && (
+                      <div class="flex justify-between text-slate-400">
+                        <span class="font-sans">Prev Hour Output:</span>
+                        <span>{item.prevOutputMW.toLocaleString()} MW</span>
+                      </div>
+                    )}
+                    {hohStrFull && (
+                      <div class="flex justify-between text-slate-200 border-t border-slate-800 pt-0.5 mt-0.5">
+                        <span class="text-slate-400 font-sans">HoH Change:</span>
+                        <span class="font-bold text-blue-300">{hohStrFull}</span>
+                      </div>
+                    )}
                     <div class="flex justify-between">
                       <span class="text-slate-400 font-sans">Capability:</span>
                       <span>{item.capabilityMW.toLocaleString()} MW</span>
@@ -279,6 +306,8 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
           {remainingItems.map((item) => {
             const output = item.outputMW || 0;
             const IconComponent = FUEL_ICONS[item.fuelCategory] || Sparkles;
+            const hohStrCompact = formatHoH(item.mwChange, item.pctChange, true);
+            const hohStrFull = formatHoH(item.mwChange, item.pctChange, false);
 
             let dotBg = 'bg-emerald-500';
             if (item.status === 'idle') dotBg = 'bg-amber-400';
@@ -310,16 +339,23 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
                   <IconComponent class="w-3.5 h-3.5 text-slate-500 shrink-0 ml-auto" />
                 </div>
 
-                {/* Right: Output MW & Status Indicator */}
-                <div class="flex items-center gap-2 shrink-0">
-                  <span class="font-mono font-semibold text-slate-800">
-                    {output.toLocaleString()} MW
-                  </span>
+                {/* Right: Output MW + Compact HoH + Status Indicator */}
+                <div class="flex items-center gap-1.5 shrink-0 font-mono">
+                  <div class="text-right">
+                    <span class="font-semibold text-slate-800 block leading-tight">
+                      {output.toLocaleString()} MW
+                    </span>
+                    {hohStrCompact && (
+                      <span class="text-[9.5px] text-slate-500 block leading-none">
+                        {hohStrCompact}
+                      </span>
+                    )}
+                  </div>
                   <span class={`w-2 h-2 rounded-full ${dotBg}`}></span>
                 </div>
 
                 {/* Hover Tooltip */}
-                <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[180px]">
+                <div class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-xl whitespace-nowrap min-w-[190px]">
                   <div class="font-bold border-b border-slate-700 pb-1 mb-1 flex items-center justify-between gap-2">
                     <span>#{item.rank} {item.displayName}</span>
                     <span class={`text-[9px] px-1.5 py-0 rounded font-sans uppercase font-bold ${
@@ -346,6 +382,18 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
                       <span class="text-slate-400 font-sans">Current Output:</span>
                       <span class="text-emerald-400 font-bold">{item.outputMW.toLocaleString()} MW</span>
                     </div>
+                    {item.prevOutputMW !== null && (
+                      <div class="flex justify-between text-slate-400">
+                        <span class="font-sans">Prev Hour Output:</span>
+                        <span>{item.prevOutputMW.toLocaleString()} MW</span>
+                      </div>
+                    )}
+                    {hohStrFull && (
+                      <div class="flex justify-between text-slate-200 border-t border-slate-800 pt-0.5 mt-0.5">
+                        <span class="text-slate-400 font-sans">HoH Change:</span>
+                        <span class="font-bold text-blue-300">{hohStrFull}</span>
+                      </div>
+                    )}
                     <div class="flex justify-between">
                       <span class="text-slate-400 font-sans">Capability:</span>
                       <span>{item.capabilityMW.toLocaleString()} MW</span>

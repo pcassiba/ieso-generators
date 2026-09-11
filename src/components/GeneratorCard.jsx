@@ -1,8 +1,10 @@
 import React from 'react';
+import { formatHoH } from '../utils/iesoParser';
 
 export default function GeneratorCard({ unit, onSelectGenerator }) {
   const capabilityFormatted = (unit.capabilityMW || 0).toLocaleString();
   const outputFormatted = (unit.outputMW || 0).toLocaleString();
+  const hohStr = formatHoH(unit.mwChange, unit.pctChange, true);
 
   let dotBg = 'bg-emerald-500';
   let statusText = 'text-emerald-700';
@@ -40,8 +42,13 @@ export default function GeneratorCard({ unit, onSelectGenerator }) {
       </div>
 
       {/* Line 2: Parent Facility Context */}
-      <div class="text-[10.5px] text-slate-400 font-medium truncate">
-        Facility: <span class="text-slate-600 font-semibold">{unit.facilityName}</span>
+      <div class="text-[10.5px] text-slate-400 font-medium truncate flex items-center justify-between gap-1">
+        <span>Facility: <strong class="text-slate-600 font-semibold">{unit.facilityName}</strong></span>
+        {hohStr && (
+          <span class="text-slate-500 font-mono text-[10px] shrink-0">
+            {hohStr}
+          </span>
+        )}
       </div>
 
       {/* Line 3: Capability & Output MW */}

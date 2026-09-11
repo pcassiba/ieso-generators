@@ -53,6 +53,31 @@ export function getUnitStatus(outputMW, capabilityMW, availMW) {
 }
 
 /**
+ * Format hour-over-hour change string
+ * E.g. "↑ +114 MW (+14.2%)" or compact "↑ +114 MW"
+ */
+export function formatHoH(mwChange, pctChange = null, compact = false) {
+  if (mwChange === 0 || mwChange === null || mwChange === undefined) {
+    return null;
+  }
+  const isPos = mwChange > 0;
+  const arrow = isPos ? '↑' : '↓';
+  const sign = isPos ? '+' : '−';
+  const absMW = Math.abs(mwChange);
+  const formattedMW = `${sign}${absMW.toLocaleString()} MW`;
+
+  if (compact) {
+    return `${arrow} ${formattedMW}`;
+  }
+
+  const pctStr = (pctChange !== null && pctChange !== undefined && Math.abs(pctChange) >= 0.1)
+    ? ` (${isPos ? '+' : ''}${pctChange.toFixed(1)}%)`
+    : '';
+
+  return `${arrow} ${formattedMW}${pctStr}`;
+}
+
+/**
  * Extract short chip unit label (e.g. G1, G2, G3, U1)
  */
 export function getShortUnitLabel(genName) {
@@ -141,9 +166,6 @@ export function mapFuelToSection(fuelType, genName) {
   return SECTION_KEYS.OTHER;
 }
 
-/**
- * Default fallback ratings by fuel type if capability is zero and no sister unit is available
- */
 function getDefaultFuelRating(fuelType) {
   const fuel = (fuelType || '').toUpperCase();
   if (fuel === 'GAS') return 150;
@@ -190,14 +212,18 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     ? selectedHour
     : (availableHours.length > 0 ? Math.max(...availableHours) : 1);
 
+  const prevHour = activeHour > 1 ? activeHour - 1 : null;
+
   const sectionsMap = {};
   Object.values(SECTION_KEYS).forEach(secKey => {
     sectionsMap[secKey] = {
       key: secKey,
       title: secKey,
       totalOutputMW: 0,
+      totalPrevOutputMW: 0,
       totalCapabilityMW: 0,
       totalUnavailableMW: 0,
+      totalMwChange: 0,
       facilitiesCount: 0,
       unitsCount: 0,
       outageFacilitiesCount: 0,
@@ -217,22 +243,18 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     const genName = nameNode.textContent.trim();
     const fuelType = fuelNode ? fuelNode.textContent.trim() : 'UNKNOWN';
 
-    // Get active hour metric
-    const getMetricForHour = (selectorTag) => {
+    // Get metric for specific target hour
+    const getMetricForHour = (selectorTag, targetHour) => {
+      if (!targetHour) return null;
       const nodes = Array.from(genNode.querySelectorAll(selectorTag) || genNode.querySelectorAll(`*|${selectorTag}`));
       for (const node of nodes) {
         const hNode = node.querySelector('Hour') || node.querySelector('*|Hour');
-        if (hNode && parseInt(hNode.textContent, 10) === activeHour) {
+        if (hNode && parseInt(hNode.textContent, 10) === targetHour) {
           const valNode = node.querySelector('EnergyMW') || node.querySelector('*|EnergyMW');
           return valNode ? parseInt(valNode.textContent, 10) || 0 : 0;
         }
       }
-      if (nodes.length > 0) {
-        const lastNode = nodes[nodes.length - 1];
-        const valNode = lastNode.querySelector('EnergyMW') || lastNode.querySelector('*|EnergyMW');
-        return valNode ? parseInt(valNode.textContent, 10) || 0 : 0;
-      }
-      return 0;
+      return null;
     };
 
     // Calculate max capability across 24h for rating detection
@@ -247,9 +269,13 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       return maxVal;
     };
 
-    const outputMW = getMetricForHour('Output');
-    const capabilityMW = getMetricForHour('Capability');
-    const availMW = getMetricForHour('AvailCapacity');
+    const outputMW = getMetricForHour('Output', activeHour) || 0;
+    const capabilityMW = getMetricForHour('Capability', activeHour) || 0;
+    const availMW = getMetricForHour('AvailCapacity', activeHour) || 0;
+
+    const prevOutputMW = prevHour !== null ? getMetricForHour('Output', prevHour) : null;
+    const mwChange = prevOutputMW !== null ? outputMW - prevOutputMW : 0;
+    const pctChange = (prevOutputMW !== null && prevOutputMW > 0) ? ((outputMW - prevOutputMW) / prevOutputMW) * 100 : 0;
 
     const maxCap24h = getMaxMetricAcrossFile('Capability');
     const maxAvail24h = getMaxMetricAcrossFile('AvailCapacity');
@@ -267,6 +293,9 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       facilityName,
       fuelType,
       outputMW,
+      prevOutputMW,
+      mwChange,
+      pctChange,
       capabilityMW,
       availMW,
       maxCapabilityMW,
@@ -284,8 +313,10 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
         sectionKey,
         fuelType,
         totalOutputMW: 0,
+        totalPrevOutputMW: 0,
         totalCapabilityMW: 0,
         totalUnavailableMW: 0,
+        totalMwChange: 0,
         outageUnitsCount: 0,
         installedRatingMW: NUCLEAR_INSTALLED_RATINGS[facilityName] || 0,
         units: []
@@ -295,20 +326,30 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     const facility = section.facilitiesMap[facilityName];
     facility.units.push(unitObj);
     facility.totalOutputMW += outputMW;
+    if (prevOutputMW !== null) {
+      facility.totalPrevOutputMW += prevOutputMW;
+    }
     facility.totalCapabilityMW += capabilityMW;
 
     section.totalOutputMW += outputMW;
+    if (prevOutputMW !== null) {
+      section.totalPrevOutputMW += prevOutputMW;
+    }
     section.totalCapabilityMW += capabilityMW;
     section.unitsCount++;
 
     totalGeneratorsProcessed++;
   });
 
-  // Second pass: Calculate facility unit max ratings and unavailable MW for outages
+  // Second pass: Calculate facility level HoH metrics, unit max ratings, and unavailable MW
   Object.keys(sectionsMap).forEach(secKey => {
     const sec = sectionsMap[secKey];
     Object.values(sec.facilitiesMap).forEach(fac => {
-      // Find highest unit capability in facility to serve as fallback rating
+      fac.totalMwChange = fac.totalOutputMW - fac.totalPrevOutputMW;
+      fac.totalPctChange = (fac.totalPrevOutputMW > 0)
+        ? ((fac.totalOutputMW - fac.totalPrevOutputMW) / fac.totalPrevOutputMW) * 100
+        : 0;
+
       const facMaxUnitCap = Math.max(
         ...fac.units.map(u => Math.max(u.maxCapabilityMW, u.capabilityMW, u.availMW)),
         0
@@ -337,6 +378,11 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
         sec.outageUnitsCount += fac.outageUnitsCount;
       }
     });
+
+    sec.totalMwChange = sec.totalOutputMW - sec.totalPrevOutputMW;
+    sec.totalPctChange = (sec.totalPrevOutputMW > 0)
+      ? ((sec.totalOutputMW - sec.totalPrevOutputMW) / sec.totalPrevOutputMW) * 100
+      : 0;
   });
 
   // Process facilities list and sort
@@ -383,6 +429,7 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     createdAt,
     reportDate,
     activeHour,
+    prevHour,
     totalGeneratorsProcessed,
     grandTotalUnavailableMW,
     grandTotalOutageUnits,
