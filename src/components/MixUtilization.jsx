@@ -1,5 +1,5 @@
 import React from 'react';
-import { Atom, Flame, Waves, Wind, BatteryCharging, Sparkles, BarChart2, Gauge, ShieldCheck, Zap } from 'lucide-react';
+import { Atom, Flame, Waves, Wind, BatteryCharging, Sparkles, BarChart2, Gauge, ShieldCheck, Zap, HelpCircle } from 'lucide-react';
 import { SECTION_KEYS } from '../utils/iesoParser';
 
 const FUEL_ICONS = {
@@ -250,6 +250,74 @@ export default function MixUtilization({ data, onSelectFacility }) {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Educational / Explanatory Footer Section */}
+      <div class="bg-slate-50 border border-slate-200/90 rounded-lg p-4 space-y-3 text-xs text-slate-700 mt-6">
+        <div class="flex items-center gap-2 pb-2 border-b border-slate-200 text-slate-900">
+          <HelpCircle class="w-4 h-4 text-blue-600 shrink-0" />
+          <h3 class="font-extrabold text-xs uppercase tracking-tight">
+            How to Read & Use the Mix & Utilization Tab
+          </h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          {/* Column 1: Core Metrics */}
+          <div class="space-y-1.5">
+            <h4 class="font-bold text-slate-900 flex items-center gap-1.5 text-[11.5px]">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+              <span>Core Metrics</span>
+            </h4>
+            <ul class="space-y-1 text-[11px] text-slate-600 leading-relaxed">
+              <li>
+                <strong class="text-slate-800">Current Output (MW):</strong> Real-time electricity generated and supplied to the Ontario grid.
+              </li>
+              <li>
+                <strong class="text-slate-800">% Share:</strong> Percentage of total Ontario generation contributed by this fuel type.
+              </li>
+              <li>
+                <strong class="text-slate-800">Capability (MW):</strong> Maximum available generation capacity reported for the current hour.
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 2: Utilization & Spare Capacity */}
+          <div class="space-y-1.5">
+            <h4 class="font-bold text-slate-900 flex items-center gap-1.5 text-[11.5px]">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+              <span>Utilization & Reserve</span>
+            </h4>
+            <ul class="space-y-1 text-[11px] text-slate-600 leading-relaxed">
+              <li>
+                <strong class="text-slate-800">Utilization %:</strong> Calculated as <code class="bg-slate-200/70 px-1 py-0.2 rounded font-mono text-[10px]">Output / Capability</code>. Shows how heavily a fuel source is dispatched.
+              </li>
+              <li>
+                <strong class="text-slate-800">Spare Capability:</strong> Un-dispatched capacity (<code class="bg-slate-200/70 px-1 py-0.2 rounded font-mono text-[10px]">Capability − Output</code>) available to ramp up if grid demand spikes.
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 3: Grid Dispatch Patterns */}
+          <div class="space-y-1.5">
+            <h4 class="font-bold text-slate-900 flex items-center gap-1.5 text-[11.5px]">
+              <span class="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
+              <span>Understanding Dispatch</span>
+            </h4>
+            <ul class="space-y-1 text-[11px] text-slate-600 leading-relaxed">
+              <li>
+                <strong class="text-slate-800">Baseload Power:</strong> Nuclear typically runs at high utilization (~95–100%) for constant, continuous supply.
+              </li>
+              <li>
+                <strong class="text-slate-800">Flexible Ramping:</strong> Natural Gas and Hydro adjust output dynamically to balance load changes and intermittent wind.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-200/70 text-[10.5px] text-slate-500 flex items-center justify-between flex-wrap gap-2">
+          <span>💡 <strong>Pro-Tip:</strong> Click any fuel row above to view facilities operating in that category.</span>
+          <span class="font-mono text-slate-400">Data Source: Live IESO Generation Output & Capability Report</span>
         </div>
       </div>
     </div>
