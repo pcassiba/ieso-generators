@@ -7,6 +7,7 @@ import GeneratorCard from './components/GeneratorCard';
 import Visualization from './components/Visualization';
 import OutagesSummary from './components/OutagesSummary';
 import OutageVisualization from './components/OutageVisualization';
+import DetailDrawer from './components/DetailDrawer';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
@@ -27,6 +28,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState('capability'); // 'capability' | 'output'
   const [viewMode, setViewMode] = useState('facility'); // 'facility' | 'generator'
   const [activeTab, setActiveTab] = useState('summary'); // 'summary' | 'visual'
+  const [selectedDetail, setSelectedDetail] = useState(null); // { type: 'facility'|'generator', facility|unit }
 
   // Live vs Historical Archive State
   const [isLiveMode, setIsLiveMode] = useState(true);
@@ -268,7 +270,11 @@ export default function App() {
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3.5 gap-y-1.5">
                           {visibleUnits.length > 0 ? (
                             visibleUnits.map((unit) => (
-                              <GeneratorCard key={unit.genName} unit={unit} />
+                              <GeneratorCard
+                                key={unit.genName}
+                                unit={unit}
+                                onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
+                              />
                             ))
                           ) : (
                             <div class="py-2 text-slate-400 text-xs italic">
@@ -313,7 +319,12 @@ export default function App() {
                       <div class={gridLayoutClass}>
                         {visibleFacilities.length > 0 ? (
                           visibleFacilities.map((facility) => (
-                            <FacilityCard key={facility.name} facility={facility} />
+                            <FacilityCard
+                              key={facility.name}
+                              facility={facility}
+                              onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                              onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
+                            />
                           ))
                         ) : (
                           <div class="py-2 text-slate-400 text-xs italic">
@@ -350,6 +361,8 @@ export default function App() {
                   data={data}
                   viewMode={viewMode}
                   onViewModeChange={(mode) => setViewMode(mode)}
+                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                  onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
                 />
               </main>
             )}
@@ -357,7 +370,11 @@ export default function App() {
             {/* Tab 3: Outages Summary View */}
             {activeTab === 'outages' && (
               <main class="py-1">
-                <OutagesSummary data={data} />
+                <OutagesSummary
+                  data={data}
+                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                  onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
+                />
               </main>
             )}
 
@@ -368,9 +385,18 @@ export default function App() {
                   data={data}
                   viewMode={viewMode}
                   onViewModeChange={(mode) => setViewMode(mode)}
+                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                  onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
                 />
               </main>
             )}
+
+            {/* Slide-in Detail Drawer */}
+            <DetailDrawer
+              selectedDetail={selectedDetail}
+              onClose={() => setSelectedDetail(null)}
+              data={data}
+            />
           </>
         )}
 

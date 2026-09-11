@@ -1,18 +1,36 @@
 import React from 'react';
 import { SECTION_KEYS } from '../utils/iesoParser';
 
-export default function FacilityCard({ facility }) {
+export default function FacilityCard({ facility, onSelectFacility, onSelectGenerator }) {
   const capabilityFormatted = facility.totalCapabilityMW.toLocaleString();
   const outputFormatted = facility.totalOutputMW.toLocaleString();
   const isNuclear = facility.sectionKey === SECTION_KEYS.NUCLEAR;
 
+  const handleCardClick = (e) => {
+    if (onSelectFacility) {
+      onSelectFacility(facility);
+    }
+  };
+
+  const handleUnitClick = (e, unit) => {
+    e.stopPropagation();
+    if (onSelectGenerator) {
+      onSelectGenerator(unit);
+    } else if (onSelectFacility) {
+      onSelectFacility(facility);
+    }
+  };
+
   // Nuclear: Unboxed 2-line compact row (~45-50px tall)
   if (isNuclear) {
     return (
-      <div class="py-1.5 px-1 border-b border-slate-100/80 last:border-b-0 hover:bg-slate-50/60 transition-colors">
+      <div
+        onClick={handleCardClick}
+        class="py-1.5 px-1 border-b border-slate-100/80 last:border-b-0 hover:bg-slate-50/80 transition-colors cursor-pointer select-none"
+      >
         {/* Line 1: Facility Name & Status Dots */}
         <div class="flex items-center justify-between gap-2 min-w-0">
-          <h3 class="text-sm font-bold text-slate-900 tracking-tight shrink-0">
+          <h3 class="text-sm font-bold text-slate-900 tracking-tight shrink-0 hover:text-blue-600 transition-colors">
             {facility.name}
           </h3>
 
@@ -31,7 +49,10 @@ export default function FacilityCard({ facility }) {
 
               return (
                 <div key={unit.genName} class="relative group shrink-0">
-                  <div class="inline-flex items-center gap-1 text-[11px] font-mono select-none cursor-pointer">
+                  <div
+                    onClick={(e) => handleUnitClick(e, unit)}
+                    class="inline-flex items-center gap-1 text-[11px] font-mono select-none cursor-pointer hover:underline"
+                  >
                     <span class={`w-1.5 h-1.5 rounded-full ${dotBg}`}></span>
                     <span class={`font-medium ${labelColor}`}>{unit.shortLabel}</span>
                   </div>
@@ -80,10 +101,13 @@ export default function FacilityCard({ facility }) {
 
   // Gas, Hydro, Wind, Batteries: Ultra-compact 3-line panel block (~50-55px tall)
   return (
-    <div class="py-1.5 px-2.5 bg-slate-50/40 hover:bg-slate-100/80 rounded-md border border-slate-100 transition-colors flex flex-col justify-between min-h-[50px] max-h-[56px]">
+    <div
+      onClick={handleCardClick}
+      class="py-1.5 px-2.5 bg-slate-50/40 hover:bg-slate-100/90 rounded-md border border-slate-100 hover:border-slate-200 transition-colors flex flex-col justify-between min-h-[50px] max-h-[56px] cursor-pointer select-none"
+    >
       {/* Line 1: Facility Name */}
       <div class="flex items-center justify-between gap-1 min-w-0">
-        <h3 class="text-xs font-bold text-slate-900 tracking-tight truncate">
+        <h3 class="text-xs font-bold text-slate-900 tracking-tight truncate hover:text-blue-600 transition-colors">
           {facility.name}
         </h3>
       </div>
@@ -103,7 +127,10 @@ export default function FacilityCard({ facility }) {
 
           return (
             <div key={unit.genName} class="relative group shrink-0">
-              <div class="inline-flex items-center gap-1 text-[10.5px] font-mono select-none cursor-pointer">
+              <div
+                onClick={(e) => handleUnitClick(e, unit)}
+                class="inline-flex items-center gap-1 text-[10.5px] font-mono select-none cursor-pointer hover:underline"
+              >
                 <span class={`w-1.5 h-1.5 rounded-full ${dotBg}`}></span>
                 <span class={`font-medium ${labelColor}`}>{unit.shortLabel}</span>
               </div>

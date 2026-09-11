@@ -11,8 +11,16 @@ const FUEL_ICONS = {
   'OTHER': Sparkles
 };
 
-export default function Visualization({ data, viewMode = 'facility', onViewModeChange }) {
+export default function Visualization({ data, viewMode = 'facility', onViewModeChange, onSelectFacility, onSelectGenerator }) {
   if (!data || !data.sections) return null;
+
+  const handleItemClick = (item) => {
+    if (viewMode === 'generator') {
+      if (onSelectGenerator) onSelectGenerator(item.displayName);
+    } else {
+      if (onSelectFacility) onSelectFacility(item.displayName);
+    }
+  };
 
   const isGeneratorView = viewMode === 'generator';
   const allItems = [];
@@ -174,6 +182,7 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
               <div key={item.id} class="relative group">
                 {/* Generous Visual Card */}
                 <div
+                  onClick={() => handleItemClick(item)}
                   style={{ width: `${boxWidth}px` }}
                   class={`rounded-lg border p-2.5 flex flex-col justify-between cursor-pointer select-none transition-transform hover:scale-102 ${statusStyle}`}
                 >
@@ -278,7 +287,8 @@ export default function Visualization({ data, viewMode = 'facility', onViewModeC
             return (
               <div
                 key={item.id}
-                class="py-1.5 px-2.5 bg-slate-50/40 hover:bg-slate-100/80 rounded border border-slate-100 flex items-center justify-between gap-2 text-xs transition-colors relative group"
+                onClick={() => handleItemClick(item)}
+                class="py-1.5 px-2.5 bg-slate-50/40 hover:bg-slate-100/80 rounded border border-slate-100 flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer select-none relative group"
               >
                 {/* Left: Rank, Name, Fuel Icon */}
                 <div class="flex items-center gap-2 min-w-0 flex-1">

@@ -2,8 +2,21 @@ import React from 'react';
 import { SECTION_KEYS } from '../utils/iesoParser';
 import { AlertTriangle, Wrench } from 'lucide-react';
 
-export default function OutagesSummary({ data }) {
+export default function OutagesSummary({ data, onSelectFacility, onSelectGenerator }) {
   if (!data || !data.sections) return null;
+
+  const handleFacilityClick = (facName) => {
+    if (onSelectFacility) {
+      onSelectFacility(facName);
+    }
+  };
+
+  const handleUnitClick = (e, genName) => {
+    e.stopPropagation();
+    if (onSelectGenerator) {
+      onSelectGenerator(genName);
+    }
+  };
 
   return (
     <div class="space-y-4">
@@ -29,7 +42,6 @@ export default function OutagesSummary({ data }) {
 
       {/* Fuel Sections */}
       {data.sections.map((section) => {
-        // Filter facilities to only those with units on outage
         const outageFacilities = (section.facilities || [])
           .filter(fac => fac.outageUnitsCount > 0)
           .map(fac => ({
@@ -55,7 +67,6 @@ export default function OutagesSummary({ data }) {
           );
         }
 
-        // Sort facilities by unavailable capability MW descending
         outageFacilities.sort((a, b) => b.totalUnavailableMW - a.totalUnavailableMW);
 
         const isNuclear = section.key === SECTION_KEYS.NUCLEAR;
@@ -88,10 +99,14 @@ export default function OutagesSummary({ data }) {
 
                 if (isNuclear) {
                   return (
-                    <div key={fac.name} class="py-2 px-1 border-b border-rose-100 last:border-b-0 hover:bg-rose-50/40 transition-colors">
+                    <div
+                      key={fac.name}
+                      onClick={() => handleFacilityClick(fac.name)}
+                      class="py-2 px-1 border-b border-rose-100 last:border-b-0 hover:bg-rose-50/60 transition-colors cursor-pointer select-none"
+                    >
                       <div class="flex items-center justify-between gap-2 min-w-0">
                         <div class="flex items-center gap-2 shrink-0">
-                          <h3 class="text-sm font-bold text-slate-900 tracking-tight">
+                          <h3 class="text-sm font-bold text-slate-900 tracking-tight hover:text-rose-700 transition-colors">
                             {fac.name}
                           </h3>
                           <span class="text-[10px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded border border-rose-200">
@@ -103,7 +118,10 @@ export default function OutagesSummary({ data }) {
                         <div class="flex items-center gap-2 overflow-x-auto min-w-0">
                           {fac.outageUnits.map((unit) => (
                             <div key={unit.genName} class="relative group shrink-0">
-                              <div class="inline-flex items-center gap-1 text-[11px] font-mono select-none cursor-pointer bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-rose-800">
+                              <div
+                                onClick={(e) => handleUnitClick(e, unit.genName)}
+                                class="inline-flex items-center gap-1 text-[11px] font-mono select-none cursor-pointer bg-rose-50 hover:bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded text-rose-800"
+                              >
                                 <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                                 <span class="font-semibold text-rose-900">{unit.shortLabel}</span>
                               </div>
@@ -140,9 +158,13 @@ export default function OutagesSummary({ data }) {
 
                 // Gas, Hydro, Wind, Batteries outage card
                 return (
-                  <div key={fac.name} class="py-1.5 px-2.5 bg-rose-50/40 hover:bg-rose-100/70 rounded-md border border-rose-200/80 transition-colors flex flex-col justify-between min-h-[54px]">
+                  <div
+                    key={fac.name}
+                    onClick={() => handleFacilityClick(fac.name)}
+                    class="py-1.5 px-2.5 bg-rose-50/40 hover:bg-rose-100/80 rounded-md border border-rose-200/80 hover:border-rose-300 transition-colors flex flex-col justify-between min-h-[54px] cursor-pointer select-none"
+                  >
                     <div class="flex items-center justify-between gap-1 min-w-0">
-                      <h3 class="text-xs font-bold text-slate-900 tracking-tight truncate">
+                      <h3 class="text-xs font-bold text-slate-900 tracking-tight truncate hover:text-rose-700 transition-colors">
                         {fac.name}
                       </h3>
                       <span class="text-[10px] text-rose-700 font-bold bg-rose-100 px-1.5 py-0.2 rounded shrink-0">
@@ -154,7 +176,10 @@ export default function OutagesSummary({ data }) {
                     <div class="flex items-center gap-1.5 flex-wrap my-0.5 min-w-0">
                       {fac.outageUnits.map((unit) => (
                         <div key={unit.genName} class="relative group shrink-0">
-                          <div class="inline-flex items-center gap-1 text-[10.5px] font-mono select-none cursor-pointer">
+                          <div
+                            onClick={(e) => handleUnitClick(e, unit.genName)}
+                            class="inline-flex items-center gap-1 text-[10.5px] font-mono select-none cursor-pointer hover:underline"
+                          >
                             <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                             <span class="font-semibold text-rose-800">{unit.shortLabel}</span>
                           </div>

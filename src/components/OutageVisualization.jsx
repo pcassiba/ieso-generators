@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Atom, Flame, Waves, Wind, BatteryCharging, Sparkles, Layers, Cpu, AlertTriangle } from 'lucide-react';
 import { SECTION_KEYS } from '../utils/iesoParser';
 
@@ -11,11 +11,19 @@ const FUEL_ICONS = {
   'OTHER': Sparkles
 };
 
-export default function OutageVisualization({ data, viewMode = 'facility', onViewModeChange }) {
+export default function OutageVisualization({ data, viewMode = 'facility', onViewModeChange, onSelectFacility, onSelectGenerator }) {
   if (!data || !data.sections) return null;
 
   const isGeneratorView = viewMode === 'generator';
   const allItems = [];
+
+  const handleItemClick = (item) => {
+    if (isGeneratorView) {
+      if (onSelectGenerator) onSelectGenerator(item.displayName);
+    } else {
+      if (onSelectFacility) onSelectFacility(item.displayName);
+    }
+  };
 
   data.sections.forEach(section => {
     let sectionFuelKey = section.key;
@@ -143,6 +151,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
               <div key={item.id} class="relative group">
                 {/* Generous Outage Card */}
                 <div
+                  onClick={() => handleItemClick(item)}
                   style={{ width: `${boxWidth}px` }}
                   class={`rounded-lg border p-2.5 flex flex-col justify-between cursor-pointer select-none transition-transform hover:scale-102 ${statusStyle}`}
                 >
@@ -243,7 +252,8 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
               return (
                 <div
                   key={item.id}
-                  class="py-1.5 px-2.5 bg-rose-50/40 hover:bg-rose-100/70 rounded border border-rose-200 flex items-center justify-between gap-2 text-xs transition-colors relative group"
+                  onClick={() => handleItemClick(item)}
+                  class="py-1.5 px-2.5 bg-rose-50/40 hover:bg-rose-100/80 rounded border border-rose-200 flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer select-none relative group"
                 >
                   <div class="flex items-center gap-2 min-w-0 flex-1">
                     <span class="text-[10px] font-mono font-bold text-rose-400 w-6 shrink-0">

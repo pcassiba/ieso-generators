@@ -1,12 +1,12 @@
 import React from 'react';
 
-export default function GeneratorCard({ unit }) {
+export default function GeneratorCard({ unit, onSelectGenerator }) {
   const capabilityFormatted = (unit.capabilityMW || 0).toLocaleString();
   const outputFormatted = (unit.outputMW || 0).toLocaleString();
 
   let dotBg = 'bg-emerald-500';
   let statusText = 'text-emerald-700';
-  let borderStyle = 'border-slate-100 bg-slate-50/40 hover:bg-slate-100/80';
+  let borderStyle = 'border-slate-100 bg-slate-50/40 hover:bg-slate-100/90';
 
   if (unit.status === 'idle') {
     dotBg = 'bg-amber-400';
@@ -14,14 +14,23 @@ export default function GeneratorCard({ unit }) {
   } else if (unit.status === 'outage') {
     dotBg = 'bg-rose-500';
     statusText = 'text-rose-700';
-    borderStyle = 'border-rose-100 bg-rose-50/30 hover:bg-rose-50/60';
+    borderStyle = 'border-rose-100 bg-rose-50/30 hover:bg-rose-50/70';
   }
 
+  const handleClick = () => {
+    if (onSelectGenerator) {
+      onSelectGenerator(unit);
+    }
+  };
+
   return (
-    <div class={`py-1.5 px-2.5 rounded-md border transition-colors flex flex-col justify-between min-h-[50px] ${borderStyle}`}>
+    <div
+      onClick={handleClick}
+      class={`py-1.5 px-2.5 rounded-md border transition-colors flex flex-col justify-between min-h-[50px] cursor-pointer select-none ${borderStyle}`}
+    >
       {/* Line 1: Generator Name & Status Dot */}
       <div class="flex items-center justify-between gap-1 min-w-0">
-        <h3 class="text-xs font-bold text-slate-900 tracking-tight truncate">
+        <h3 class="text-xs font-bold text-slate-900 tracking-tight truncate hover:text-blue-600 transition-colors">
           {unit.genName}
         </h3>
         <div class="flex items-center gap-1 shrink-0 text-[10.5px]">
