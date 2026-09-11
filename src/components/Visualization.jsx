@@ -109,23 +109,23 @@ export default function Visualization({ data }) {
           <div class="flex items-center gap-3.5 flex-wrap">
             <span class="font-semibold text-slate-700">Fuel Icons:</span>
             <div class="flex items-center gap-1 text-slate-700">
-              <Atom class="w-3.5 h-3.5 text-blue-600" />
+              <Atom class="w-4 h-4 text-blue-600" />
               <span>Nuclear</span>
             </div>
             <div class="flex items-center gap-1 text-slate-700">
-              <Flame class="w-3.5 h-3.5 text-orange-600" />
+              <Flame class="w-4 h-4 text-orange-600" />
               <span>Gas</span>
             </div>
             <div class="flex items-center gap-1 text-slate-700">
-              <Waves class="w-3.5 h-3.5 text-cyan-600" />
+              <Waves class="w-4 h-4 text-cyan-600" />
               <span>Hydro</span>
             </div>
             <div class="flex items-center gap-1 text-slate-700">
-              <Wind class="w-3.5 h-3.5 text-emerald-600" />
+              <Wind class="w-4 h-4 text-emerald-600" />
               <span>Wind</span>
             </div>
             <div class="flex items-center gap-1 text-slate-700">
-              <BatteryCharging class="w-3.5 h-3.5 text-purple-600" />
+              <BatteryCharging class="w-4 h-4 text-purple-600" />
               <span>Batteries</span>
             </div>
           </div>
@@ -138,12 +138,10 @@ export default function Visualization({ data }) {
           const output = fac.totalOutputMW || 0;
           const IconComponent = FUEL_ICONS[fac.fuelCategory] || Sparkles;
 
-          // Non-linear Square-Root Sizing
-          // 0 MW: 52px width, 52px height
-          // 5,600 MW: ~110px width, ~105px height
-          const boxWidth = Math.min(115, Math.max(52, Math.round(52 + Math.sqrt(output) * 0.78)));
-          const boxHeight = Math.min(108, Math.max(50, Math.round(50 + Math.sqrt(output) * 0.72)));
-          const iconSize = Math.min(28, Math.max(15, Math.round(15 + Math.sqrt(output) * 0.20)));
+          // Refined Sizing: Larger Icons (20px - 34px) & Generous Cards (62px - 125px)
+          const boxWidth = Math.min(125, Math.max(62, Math.round(62 + Math.sqrt(output) * 0.75)));
+          const boxHeight = Math.min(115, Math.max(58, Math.round(58 + Math.sqrt(output) * 0.70)));
+          const iconSize = Math.min(34, Math.max(20, Math.round(20 + Math.sqrt(output) * 0.22)));
 
           let statusStyle = 'bg-emerald-50/80 text-emerald-700 border-emerald-300 hover:bg-emerald-100 shadow-2xs';
 
@@ -155,24 +153,24 @@ export default function Visualization({ data }) {
 
           return (
             <div key={fac.name} class="relative group">
-              {/* Aggregated Facility Card with Square-Root Sizing */}
+              {/* Aggregated Facility Card with Larger Symbols & Refined Text */}
               <div
                 style={{ width: `${boxWidth}px`, height: `${boxHeight}px` }}
                 class={`rounded-lg border p-1.5 flex flex-col items-center justify-between cursor-pointer select-none transition-transform hover:scale-105 ${statusStyle}`}
               >
-                {/* Top: Fuel Type Icon */}
+                {/* Top: Larger Fuel Type Symbol */}
                 <IconComponent style={{ width: `${iconSize}px`, height: `${iconSize}px` }} class="shrink-0" />
 
-                {/* Middle: Prominent Output MW Label */}
-                <div class="text-center font-mono font-bold leading-none my-0.5">
+                {/* Middle: Prominent MW Output */}
+                <div class="text-center font-mono font-bold leading-tight my-0.5">
                   <span class="text-xs sm:text-sm text-slate-900 block tracking-tight">
                     {output.toLocaleString()}
                   </span>
                   <span class="text-[9px] text-slate-500 font-sans uppercase block -mt-0.5">MW</span>
                 </div>
 
-                {/* Bottom: Facility Name */}
-                <div class="text-[10px] font-semibold text-slate-700 truncate w-full text-center leading-none">
+                {/* Bottom: Crisp Plant / Facility Name */}
+                <div class="text-[9.5px] font-semibold text-slate-700 truncate w-full text-center leading-none tracking-tight px-0.5">
                   {fac.name}
                 </div>
               </div>
