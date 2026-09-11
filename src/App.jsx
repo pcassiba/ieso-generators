@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
+import TabBar from './components/TabBar';
 import SectionHeader from './components/SectionHeader';
 import FacilityCard from './components/FacilityCard';
+import VisualSummary from './components/VisualSummary';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
@@ -20,6 +22,7 @@ export default function App() {
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
   const [sortBy, setSortBy] = useState('capability'); // 'capability' | 'output'
+  const [activeTab, setActiveTab] = useState('summary'); // 'summary' | 'visual'
 
   // Live vs Historical Archive State
   const [isLiveMode, setIsLiveMode] = useState(true);
@@ -72,7 +75,6 @@ export default function App() {
     let fetchedXml = null;
 
     try {
-      // Primary: Call Express backend API proxy route
       const response = await fetch(apiTargetUrl, { cache: 'no-cache' });
       if (response.ok) {
         fetchedXml = await response.text();
@@ -173,7 +175,7 @@ export default function App() {
   return (
     <div class="min-h-screen bg-white text-slate-900 font-sans antialiased">
       <div class="max-w-6xl mx-auto px-4 py-2">
-        {/* Top Single-Line Header Bar & Controls */}
+        {/* Top Header Bar */}
         <Header
           createdAt={data?.createdAt}
           lastRefreshed={lastRefreshed}
@@ -191,6 +193,9 @@ export default function App() {
           availableVersions={currentAvailableVersions}
           nextRefreshTimeStr={nextRefreshTimeStr}
         />
+
+        {/* Tab Navigation Bar: Summary vs Visual Summary */}
+        <TabBar activeTab={activeTab} onSelectTab={(tab) => setActiveTab(tab)} />
 
         {/* Error Notification */}
         {error && (
@@ -216,61 +221,69 @@ export default function App() {
           </div>
         )}
 
-        {/* 5 Generation Sections */}
+        {/* Loaded Data View */}
         {data && (
-          <main class="space-y-4">
-            {data.sections.map((section) => {
-              const isNuclear = section.key === SECTION_KEYS.NUCLEAR;
-              const isExpanded = !!expandedSections[section.key];
-              const facilities = section.facilities || [];
-              const hasMore = facilities.length > INITIAL_LIMIT;
-              const visibleFacilities = (hasMore && !isExpanded)
-                ? facilities.slice(0, INITIAL_LIMIT)
-                : facilities;
+          <>
+            {/* Tab 1: Summary List / Table View */}
+            {activeTab === 'summary' && (
+              <main class="space-y-4">
+                {data.sections.map((section) => {
+                  const isNuclear = section.key === SECTION_KEYS.NUCLEAR;
+                  const isExpanded = !!expandedSections[section.key];
+                  const facilities = section.facilities || [];
+                  const hasMore = facilities.length > INITIAL_LIMIT;
+                  const visibleFacilities = (hasMore && !isExpanded)
+                    ? facilities.slice(0, INITIAL_LIMIT)
+                    : facilities;
 
-              // Grid layout: Nuclear is single column unboxed rows; Gas, Hydro, Wind, Batteries are 3 columns on desktop
-              const gridLayoutClass = isNuclear
-                ? "divide-y divide-slate-100"
-                : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3.5 gap-y-1.5";
+                  const gridLayoutClass = isNuclear
+                    ? "divide-y divide-slate-100"
+                    : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3.5 gap-y-1.5";
 
-              return (
-                <section key={section.key}>
-                  {/* Section Header */}
-                  <SectionHeader section={section} />
+                  return (
+                    <section key={section.key}>
+                      <SectionHeader section={section} />
 
-                  {/* Facilities Grid */}
-                  <div class={gridLayoutClass}>
-                    {visibleFacilities.length > 0 ? (
-                      visibleFacilities.map((facility) => (
-                        <FacilityCard key={facility.name} facility={facility} />
-                      ))
-                    ) : (
-                      <div class="py-2 text-slate-400 text-xs italic">
-                        No facilities reported for {section.title} generation.
+                      <div class={gridLayoutClass}>
+                        {visibleFacilities.length > 0 ? (
+                          visibleFacilities.map((facility) => (
+                            <FacilityCard key={facility.name} facility={facility} />
+                          ))
+                        ) : (
+                          <div class="py-2 text-slate-400 text-xs italic">
+                            No facilities reported for {section.title} generation.
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  {/* "Show all" toggle button for long sections */}
-                  {hasMore && (
-                    <div class="mt-1.5 pt-0.5 text-center">
-                      <button
-                        onClick={() => toggleSectionExpand(section.key)}
-                        class="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium py-0.5 px-2.5 rounded hover:bg-blue-50 transition-colors"
-                      >
-                        <span>
-                          {isExpanded
-                            ? 'Show top 18'
-                            : `Show all ${facilities.length} ${section.title.toLowerCase()} facilities`}
-                        </span>
-                        {isExpanded ? <ChevronUp class="w-3.5 h-3.5" /> : <ChevronDown class="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  )}
-                </section>
-              );
-            })}
-          </main>
+                      {hasMore && (
+                        <div class="mt-1.5 pt-0.5 text-center">
+                          <button
+                            onClick={() => toggleSectionExpand(section.key)}
+                            class="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium py-0.5 px-2.5 rounded hover:bg-blue-50 transition-colors"
+                          >
+                            <span>
+                              {isExpanded
+                                ? 'Show top 18'
+                                : `Show all ${facilities.length} ${section.title.toLowerCase()} facilities`}
+                            </span>
+                            {isExpanded ? <ChevronUp class="w-3.5 h-3.5" /> : <ChevronDown class="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </main>
+            )}
+
+            {/* Tab 2: Visual Summary Data Visualization View */}
+            {activeTab === 'visual' && (
+              <main class="py-2">
+                <VisualSummary data={data} />
+              </main>
+            )}
+          </>
         )}
 
         {/* Minimal Footer */}
