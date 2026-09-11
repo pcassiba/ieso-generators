@@ -7,6 +7,7 @@ import GeneratorCard from './components/GeneratorCard';
 import Visualization from './components/Visualization';
 import OutagesSummary from './components/OutagesSummary';
 import OutageVisualization from './components/OutageVisualization';
+import MixUtilization from './components/MixUtilization';
 import DetailDrawer from './components/DetailDrawer';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
 import { fetchAvailableReportsIndex, buildReportFilename, getMsUntilNext20Past } from './utils/reportIndex';
@@ -363,6 +364,16 @@ export default function App() {
                   onViewModeChange={(mode) => setViewMode(mode)}
                   onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
                   onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
+                />
+              </main>
+            )}
+
+            {/* Tab 3: Generation Mix & Utilization View */}
+            {activeTab === 'mix_utilization' && (
+              <main class="py-1">
+                <MixUtilization
+                  data={data}
+                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
                 />
               </main>
             )}
