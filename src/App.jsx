@@ -6,6 +6,7 @@ import FacilityCard from './components/FacilityCard';
 import GeneratorCard from './components/GeneratorCard';
 import Visualization from './components/Visualization';
 import OutageVisualization from './components/OutageVisualization';
+import OutagesSummary from './components/OutagesSummary';
 import MixUtilization from './components/MixUtilization';
 import Movements from './components/Movements';
 import DetailDrawer from './components/DetailDrawer';
@@ -429,6 +430,17 @@ export default function App() {
             {activeTab === 'movements' && (
               <main class="py-1">
                 <Movements
+                  data={data}
+                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
+                  onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
+                />
+              </main>
+            )}
+
+            {/* Tab: Outages Summary View */}
+            {activeTab === 'outages' && (
+              <main class="py-1">
+                <OutagesSummary
                   data={data}
                   onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
                   onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}

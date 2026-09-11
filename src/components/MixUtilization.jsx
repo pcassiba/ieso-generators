@@ -258,7 +258,7 @@ export default function MixUtilization({ data, onSelectFacility }) {
         <div class="flex items-center gap-2 pb-2 border-b border-slate-200 text-slate-900">
           <HelpCircle class="w-4 h-4 text-blue-600 shrink-0" />
           <h3 class="font-extrabold text-xs uppercase tracking-tight">
-            How to Read & Use the Mix & Utilization Tab
+            How to Read & Use the Trends Tab
           </h3>
         </div>
 
