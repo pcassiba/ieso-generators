@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { X, Atom, Flame, Waves, Wind, BatteryCharging, Sparkles, Zap, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import { SECTION_KEYS, formatHoH } from '../utils/iesoParser';
+import Sparkline from './Sparkline';
 
 const FUEL_ICONS = {
   'Nuclear': Atom,
@@ -116,7 +117,7 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
         <div class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
           {/* Target Generator Focused Header (if user clicked an individual unit) */}
           {targetUnit && (
-            <div class="bg-blue-50/80 border border-blue-200 rounded-lg p-3 space-y-2">
+            <div class="bg-blue-50/80 border border-blue-200 rounded-lg p-3 space-y-2.5">
               <div class="flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
                   <Zap class="w-4 h-4 text-blue-600 shrink-0" />
@@ -150,6 +151,26 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
                 <div class="pt-1 border-t border-blue-200/60 flex items-center justify-between text-[11px] font-mono text-slate-600">
                   <span>Prev Hour: <strong class="text-slate-800">{targetUnit.prevOutputMW.toLocaleString()} MW</strong></span>
                   <span>HoH Change: <strong class="text-blue-900">{formatHoH(targetUnit.mwChange, targetUnit.pctChange, false) || '0 MW'}</strong></span>
+                </div>
+              )}
+
+              {/* 24-Hour Sparkline Box for Target Generator */}
+              {targetUnit.hourlyOutput && targetUnit.hourlyOutput.length > 0 && (
+                <div class="pt-2 border-t border-blue-200/60 space-y-1.5">
+                  <div class="flex items-center justify-between text-[11px] font-bold text-slate-800 uppercase tracking-tight">
+                    <span>Last 24 Hours Output</span>
+                    <span class="text-[10px] text-slate-500 font-mono font-normal">
+                      {targetUnit.genName}
+                    </span>
+                  </div>
+
+                  <Sparkline dataPoints={targetUnit.hourlyOutput} color="#2563eb" />
+
+                  <div class="flex items-center justify-between text-[10.5px] font-mono text-slate-600 bg-white p-1.5 rounded border border-blue-100">
+                    <span>Current: <strong class="text-slate-900">{targetUnit.outputMW.toLocaleString()} MW</strong></span>
+                    <span>24h Low: <strong class="text-slate-700">{targetUnit.min24hOutput.toLocaleString()} MW</strong></span>
+                    <span>24h High: <strong class="text-slate-700">{targetUnit.max24hOutput.toLocaleString()} MW</strong></span>
+                  </div>
                 </div>
               )}
             </div>
@@ -219,6 +240,26 @@ export default function DetailDrawer({ selectedDetail, onClose, data }) {
               </div>
             </div>
           </div>
+
+          {/* 24-Hour Sparkline Box for Facility (visible when facility is selected or viewed) */}
+          {targetFacility.hourlyOutput && targetFacility.hourlyOutput.length > 0 && (
+            <div class="bg-white rounded-lg border border-slate-200 p-3 space-y-2">
+              <div class="flex items-center justify-between text-xs font-bold text-slate-900 uppercase tracking-tight">
+                <span>Last 24 Hours Output</span>
+                <span class="text-[10.5px] text-slate-400 font-mono font-normal">
+                  {targetFacility.name}
+                </span>
+              </div>
+
+              <Sparkline dataPoints={targetFacility.hourlyOutput} color="#2563eb" />
+
+              <div class="flex items-center justify-between text-[10.5px] font-mono text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100">
+                <span>Current: <strong class="text-slate-900">{totalOutput.toLocaleString()} MW</strong></span>
+                <span>24h Low: <strong class="text-slate-700">{(targetFacility.min24hOutput || 0).toLocaleString()} MW</strong></span>
+                <span>24h High: <strong class="text-slate-700">{(targetFacility.max24hOutput || 0).toLocaleString()} MW</strong></span>
+              </div>
+            </div>
+          )}
 
           {/* Generator Units Breakdown */}
           <div>

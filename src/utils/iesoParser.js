@@ -257,6 +257,30 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       return null;
     };
 
+    // Extract 24-hour output series for sparklines
+    const getHourlyOutputArray = () => {
+      const nodes = Array.from(genNode.querySelectorAll('Output') || genNode.querySelectorAll('*|Output'));
+      const hourMap = {};
+      nodes.forEach(node => {
+        const hNode = node.querySelector('Hour') || node.querySelector('*|Hour');
+        const valNode = node.querySelector('EnergyMW') || node.querySelector('*|EnergyMW');
+        if (hNode && valNode) {
+          const h = parseInt(hNode.textContent, 10);
+          const val = parseInt(valNode.textContent, 10) || 0;
+          if (h >= 1 && h <= 24) {
+            hourMap[h] = val;
+          }
+        }
+      });
+
+      const series = [];
+      const maxH = activeHour || 24;
+      for (let h = 1; h <= maxH; h++) {
+        series.push(hourMap[h] !== undefined ? hourMap[h] : 0);
+      }
+      return series;
+    };
+
     // Calculate max capability across 24h for rating detection
     const getMaxMetricAcrossFile = (selectorTag) => {
       const nodes = Array.from(genNode.querySelectorAll(selectorTag) || genNode.querySelectorAll(`*|${selectorTag}`));
@@ -277,6 +301,10 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     const mwChange = prevOutputMW !== null ? outputMW - prevOutputMW : 0;
     const pctChange = (prevOutputMW !== null && prevOutputMW > 0) ? ((outputMW - prevOutputMW) / prevOutputMW) * 100 : 0;
 
+    const hourlyOutput = getHourlyOutputArray();
+    const min24hOutput = hourlyOutput.length > 0 ? Math.min(...hourlyOutput) : outputMW;
+    const max24hOutput = hourlyOutput.length > 0 ? Math.max(...hourlyOutput) : outputMW;
+
     const maxCap24h = getMaxMetricAcrossFile('Capability');
     const maxAvail24h = getMaxMetricAcrossFile('AvailCapacity');
     const maxCapabilityMW = Math.max(capabilityMW, maxCap24h, maxAvail24h);
@@ -296,6 +324,9 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       prevOutputMW,
       mwChange,
       pctChange,
+      hourlyOutput,
+      min24hOutput,
+      max24hOutput,
       capabilityMW,
       availMW,
       maxCapabilityMW,
@@ -341,7 +372,7 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
     totalGeneratorsProcessed++;
   });
 
-  // Second pass: Calculate facility level HoH metrics, unit max ratings, and unavailable MW
+  // Second pass: Calculate facility 24-hour hourly series, HoH metrics, unit max ratings, and unavailable MW
   Object.keys(sectionsMap).forEach(secKey => {
     const sec = sectionsMap[secKey];
     Object.values(sec.facilitiesMap).forEach(fac => {
@@ -349,6 +380,21 @@ export function parseIesoXml(xmlString, selectedHour = null, sortBy = 'capabilit
       fac.totalPctChange = (fac.totalPrevOutputMW > 0)
         ? ((fac.totalOutputMW - fac.totalPrevOutputMW) / fac.totalPrevOutputMW) * 100
         : 0;
+
+      // Compute aggregated facility 24h hourly output series
+      const maxH = activeHour || 24;
+      const facilityHourlySeries = new Array(maxH).fill(0);
+      fac.units.forEach(u => {
+        (u.hourlyOutput || []).forEach((val, idx) => {
+          if (idx < maxH) {
+            facilityHourlySeries[idx] += val;
+          }
+        });
+      });
+
+      fac.hourlyOutput = facilityHourlySeries;
+      fac.min24hOutput = facilityHourlySeries.length > 0 ? Math.min(...facilityHourlySeries) : fac.totalOutputMW;
+      fac.max24hOutput = facilityHourlySeries.length > 0 ? Math.max(...facilityHourlySeries) : fac.totalOutputMW;
 
       const facMaxUnitCap = Math.max(
         ...fac.units.map(u => Math.max(u.maxCapabilityMW, u.capabilityMW, u.availMW)),
