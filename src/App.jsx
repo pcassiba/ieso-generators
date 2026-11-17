@@ -7,8 +7,6 @@ import GeneratorCard from './components/GeneratorCard';
 import Visualization from './components/Visualization';
 import OutageVisualization from './components/OutageVisualization';
 import OutagesSummary from './components/OutagesSummary';
-import MixUtilization from './components/MixUtilization';
-import Movements from './components/Movements';
 import WindOutlook from './components/WindOutlook';
 import DetailDrawer from './components/DetailDrawer';
 import { parseIesoXml, SECTION_KEYS } from './utils/iesoParser';
@@ -441,27 +439,6 @@ export default function App() {
                   data={data}
                   viewMode={viewMode}
                   onViewModeChange={(mode) => setViewMode(mode)}
-                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
-                  onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
-                />
-              </main>
-            )}
-
-            {/* Tab 3: Generation Mix & Utilization View */}
-            {activeTab === 'mix_utilization' && (
-              <main class="py-1">
-                <MixUtilization
-                  data={data}
-                  onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
-                />
-              </main>
-            )}
-
-            {/* Tab: Hour-over-Hour Movements View */}
-            {activeTab === 'movements' && (
-              <main class="py-1">
-                <Movements
-                  data={data}
                   onSelectFacility={(fac) => setSelectedDetail({ type: 'facility', facility: fac })}
                   onSelectGenerator={(u) => setSelectedDetail({ type: 'generator', unit: u })}
                 />

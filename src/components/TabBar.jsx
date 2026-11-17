@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutList, PieChart, AlertTriangle, AlertOctagon, BarChart2, TrendingUp, Wind } from 'lucide-react';
+import { LayoutList, PieChart, AlertTriangle, AlertOctagon, Wind } from 'lucide-react';
 
 export default function TabBar({ activeTab, onSelectTab }) {
   return (
@@ -26,30 +26,6 @@ export default function TabBar({ activeTab, onSelectTab }) {
       >
         <PieChart className="w-3.5 h-3.5" />
         <span>Ranking</span>
-      </button>
-
-      <button
-        onClick={() => onSelectTab('movements')}
-        className={`pb-2 flex items-center gap-1.5 transition-colors border-b-2 whitespace-nowrap ${
-          activeTab === 'movements'
-            ? 'border-blue-600 text-blue-600 font-bold'
-            : 'border-transparent text-slate-500 hover:text-slate-900'
-        }`}
-      >
-        <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
-        <span>Changes</span>
-      </button>
-
-      <button
-        onClick={() => onSelectTab('mix_utilization')}
-        className={`pb-2 flex items-center gap-1.5 transition-colors border-b-2 whitespace-nowrap ${
-          activeTab === 'mix_utilization'
-            ? 'border-blue-600 text-blue-600 font-bold'
-            : 'border-transparent text-slate-500 hover:text-slate-900'
-        }`}
-      >
-        <BarChart2 className="w-3.5 h-3.5 text-blue-600" />
-        <span>Trends</span>
       </button>
 
       <button
