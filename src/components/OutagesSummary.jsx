@@ -137,7 +137,7 @@ export default function OutagesSummary({ data, onSelectFacility, onSelectGenerat
                                 <div class="space-y-0.5 text-[10px] font-mono text-slate-300">
                                   <div class="flex justify-between">
                                     <span class="text-slate-400 font-sans">Unavailable:</span>
-                                    <span class="text-rose-400 font-bold">{unit.unavailableMW?.toLocaleString()} MW</span>
+                                    <span class="text-rose-400 font-bold">{unit.unavailableMW === null ? 'MW not reported' : `${unit.unavailableMW.toLocaleString()} MW`}</span>
                                   </div>
                                 </div>
                                 <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
@@ -194,7 +194,7 @@ export default function OutagesSummary({ data, onSelectFacility, onSelectGenerat
                             <div class="space-y-0.5 text-[10px] font-mono text-slate-300">
                               <div class="flex justify-between">
                                 <span class="text-slate-400 font-sans">Unavailable:</span>
-                                <span class="text-rose-400 font-bold">{unit.unavailableMW?.toLocaleString()} MW</span>
+                                <span class="text-rose-400 font-bold">{unit.unavailableMW === null ? 'MW not reported' : `${unit.unavailableMW.toLocaleString()} MW`}</span>
                               </div>
                             </div>
                             <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>

@@ -120,7 +120,7 @@ app.get('/api/ieso-vg-forecast', async (req, res) => {
  */
 app.get('/api/wind-weather-forecast', async (req, res) => {
   try {
-    const targetUrl = 'https://api.open-meteo.com/v1/forecast?latitude=43.8,42.4,44.0,44.5,46.5&longitude=-81.3,-82.0,-80.0,-76.0,-84.0&hourly=wind_speed_100m,wind_speed_10m&models=ecmwf_ifs025,gfs_seamless';
+    const targetUrl = 'https://api.open-meteo.com/v1/forecast?latitude=43.8,42.4,44.0,44.5,46.5&longitude=-81.3,-82.0,-80.0,-76.0,-84.0&hourly=wind_speed_100m,wind_speed_10m&models=ecmwf_ifs025,gfs_seamless&wind_speed_unit=kmh&timezone=GMT&forecast_days=9';
     console.log(`[Proxy] Fetching Wind Weather Forecast from Open-Meteo...`);
 
     const response = await fetch(targetUrl, {

@@ -70,6 +70,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
               fuelCategory: sectionFuelKey,
               sectionKey: section.key,
               unavailableMW: unit.unavailableMW || 0,
+              unavailableUnknown: unit.unavailableMW === null,
               availMW: unit.availMW || 0,
               outputMW: unit.outputMW || 0,
               statusLabel: 'Outage'
@@ -88,6 +89,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
             outageUnitsCount: fac.outageUnitsCount,
             totalUnitsCount: fac.units.length,
             unavailableMW: fac.totalUnavailableMW || 0,
+            unknownMWUnits: fac.unknownMWOutageUnits || 0,
             statusLabel: 'Outage'
           });
         }
@@ -284,7 +286,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
                         {/* Middle: Prominent Unavailable MW */}
                         <div class="my-1.5 font-mono font-bold text-rose-950 tracking-tight">
                           <span class="text-base block leading-none">
-                            {unavail.toLocaleString()} MW
+                            {item.unavailableUnknown ? 'MW not reported' : `${unavail.toLocaleString()} MW`}
                           </span>
                           <span class="text-[9.5px] text-rose-600 font-sans uppercase font-bold block mt-0.5">
                             Unavailable
@@ -333,7 +335,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
                           )}
                           <div class="flex justify-between border-t border-slate-800 pt-0.5 mt-0.5">
                             <span class="text-slate-400 font-sans">Unavailable Capacity:</span>
-                            <span class="text-rose-400 font-bold">{item.unavailableMW.toLocaleString()} MW</span>
+                            <span class="text-rose-400 font-bold">{item.unavailableUnknown ? 'MW not reported' : `${item.unavailableMW.toLocaleString()} MW${item.unknownMWUnits ? ` + ${item.unknownMWUnits} unit(s) not reported` : ''}`}</span>
                           </div>
                         </div>
 
@@ -396,7 +398,7 @@ export default function OutageVisualization({ data, viewMode = 'facility', onVie
 
                       <div class="flex items-center gap-2 shrink-0">
                         <span class="font-mono font-bold text-rose-900">
-                          {unavail.toLocaleString()} MW
+                          {item.unavailableUnknown ? 'MW not reported' : `${unavail.toLocaleString()} MW`}
                         </span>
                         <span class="w-2 h-2 rounded-full bg-rose-500"></span>
                       </div>
