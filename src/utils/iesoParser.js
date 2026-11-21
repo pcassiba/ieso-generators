@@ -166,15 +166,6 @@ export function mapFuelToSection(fuelType, genName) {
   return SECTION_KEYS.OTHER;
 }
 
-function getDefaultFuelRating(fuelType) {
-  const fuel = (fuelType || '').toUpperCase();
-  if (fuel === 'GAS') return 150;
-  if (fuel === 'HYDRO') return 50;
-  if (fuel === 'WIND') return 50;
-  if (fuel === 'BATTERIES' || fuel === 'OTHER') return 25;
-  return 50;
-}
-
 /**
  * Parse IESO Adequacy XML String into outage MW metrics by fuel type for a specific hour
  * @param {string} adequacyXmlString - Raw Adequacy XML content
@@ -374,7 +365,8 @@ export function parseIesoXml(xmlString, adequacyXmlString = null, selectedHour =
       const series = [];
       const maxH = activeHour || 24;
       for (let h = 1; h <= maxH; h++) {
-        series.push(hourMap[h] !== undefined ? hourMap[h] : 0);
+        // A missing hour stays empty (null), it is not filled in as 0 MW
+        series.push(hourMap[h] !== undefined ? hourMap[h] : null);
       }
       return series;
     };
@@ -400,8 +392,9 @@ export function parseIesoXml(xmlString, adequacyXmlString = null, selectedHour =
     const pctChange = (prevOutputMW !== null && prevOutputMW > 0) ? ((outputMW - prevOutputMW) / prevOutputMW) * 100 : 0;
 
     const hourlyOutput = getHourlyOutputArray();
-    const min24hOutput = hourlyOutput.length > 0 ? Math.min(...hourlyOutput) : outputMW;
-    const max24hOutput = hourlyOutput.length > 0 ? Math.max(...hourlyOutput) : outputMW;
+    const reportedHours = hourlyOutput.filter(v => v !== null);
+    const min24hOutput = reportedHours.length > 0 ? Math.min(...reportedHours) : outputMW;
+    const max24hOutput = reportedHours.length > 0 ? Math.max(...reportedHours) : outputMW;
 
     const maxCap24h = getMaxMetricAcrossFile('Capability');
     const maxAvail24h = getMaxMetricAcrossFile('AvailCapacity');
@@ -481,18 +474,23 @@ export function parseIesoXml(xmlString, adequacyXmlString = null, selectedHour =
 
       // Compute aggregated facility 24h hourly output series
       const maxH = activeHour || 24;
+      // An hour is only summed when every unit reported it; otherwise it stays empty (null)
       const facilityHourlySeries = new Array(maxH).fill(0);
       fac.units.forEach(u => {
-        (u.hourlyOutput || []).forEach((val, idx) => {
-          if (idx < maxH) {
+        for (let idx = 0; idx < maxH; idx++) {
+          const val = (u.hourlyOutput || [])[idx];
+          if (val === null || val === undefined || facilityHourlySeries[idx] === null) {
+            facilityHourlySeries[idx] = null;
+          } else {
             facilityHourlySeries[idx] += val;
           }
-        });
+        }
       });
 
       fac.hourlyOutput = facilityHourlySeries;
-      fac.min24hOutput = facilityHourlySeries.length > 0 ? Math.min(...facilityHourlySeries) : fac.totalOutputMW;
-      fac.max24hOutput = facilityHourlySeries.length > 0 ? Math.max(...facilityHourlySeries) : fac.totalOutputMW;
+      const facReported = facilityHourlySeries.filter(v => v !== null);
+      fac.min24hOutput = facReported.length > 0 ? Math.min(...facReported) : fac.totalOutputMW;
+      fac.max24hOutput = facReported.length > 0 ? Math.max(...facReported) : fac.totalOutputMW;
 
       const facMaxUnitCap = Math.max(
         ...fac.units.map(u => Math.max(u.maxCapabilityMW, u.capabilityMW, u.availMW)),
@@ -503,10 +501,11 @@ export function parseIesoXml(xmlString, adequacyXmlString = null, selectedHour =
         if (unit.status === 'outage') {
           const ratedCap = NUCLEAR_UNIT_RATINGS[unit.genName] ||
             (unit.maxCapabilityMW > 0 ? unit.maxCapabilityMW : null) ||
-            (facMaxUnitCap > 0 ? facMaxUnitCap : null) ||
-            getDefaultFuelRating(unit.fuelType);
+            (facMaxUnitCap > 0 ? facMaxUnitCap : null);
 
-          unit.unavailableMW = Math.max(0, ratedCap - unit.availMW);
+          // No rating in the report: the MW out is unknown. Do not guess a size.
+          unit.unavailableMW = ratedCap !== null ? Math.max(0, ratedCap - unit.availMW) : null;
+          unit.unavailableMWUnknown = ratedCap === null;
         } else {
           unit.unavailableMW = 0;
         }
@@ -514,7 +513,8 @@ export function parseIesoXml(xmlString, adequacyXmlString = null, selectedHour =
 
       fac.outageUnits = fac.units.filter(u => u.status === 'outage');
       fac.outageUnitsCount = fac.outageUnits.length;
-      fac.totalUnavailableMW = fac.outageUnits.reduce((sum, u) => sum + u.unavailableMW, 0);
+      fac.totalUnavailableMW = fac.outageUnits.reduce((sum, u) => sum + (u.unavailableMW || 0), 0);
+      fac.unknownMWOutageUnits = fac.outageUnits.filter(u => u.unavailableMWUnknown).length;
 
       if (fac.outageUnitsCount > 0) {
         sec.outageFacilitiesCount++;

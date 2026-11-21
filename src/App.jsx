@@ -17,6 +17,15 @@ const API_GENERATION_ENDPOINT = '/api/ieso-generation';
 const API_ADEQUACY_ENDPOINT = '/api/ieso-adequacy';
 const LIVE_DIRECT_URL = 'https://reports-public.ieso.ca/public/GenOutputCapability/PUB_GenOutputCapability.xml';
 const CORS_PROXY_BASE = 'https://api.allorigins.win/raw?url=';
+const VG_DIRECT_URL = 'https://reports-public.ieso.ca/public/VGForecastSummary/PUB_VGForecastSummary.xml';
+// timezone=GMT so each hourly value can be matched to the right hour; 9 days so the
+// 168-hour outlook starting now is fully covered
+const OPEN_METEO_DIRECT_URL = 'https://api.open-meteo.com/v1/forecast?latitude=43.8,42.4,44.0,44.5,46.5&longitude=-81.3,-82.0,-80.0,-76.0,-84.0&hourly=wind_speed_100m,wind_speed_10m&models=ecmwf_ifs025,gfs_seamless&wind_speed_unit=kmh&timezone=GMT&forecast_days=9';
+
+// Today's date in IESO market time (EST, UTC-5 all year)
+function marketTodayStr() {
+  return new Date(Date.now() - 5 * 3600 * 1000).toISOString().split('T')[0];
+}
 
 const INITIAL_LIMIT = 18;
 
@@ -25,6 +34,10 @@ export default function App() {
   const [adequacyXmlText, setAdequacyXmlText] = useState(null);
   const [vgXmlText, setVgXmlText] = useState(null);
   const [weatherData, setWeatherData] = useState(null);
+  // 'loading' | 'ok' | 'failed' for each wind outlook source
+  const [windSourceStatus, setWindSourceStatus] = useState({ ieso: 'loading', weather: 'loading' });
+  const [adequacyFailed, setAdequacyFailed] = useState(false);
+  const [indexFailed, setIndexFailed] = useState(false);
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,13 +52,14 @@ export default function App() {
   const [isLiveMode, setIsLiveMode] = useState(true);
   const [availableDates, setAvailableDates] = useState([]);
   const [versionsByDateMap, setVersionsByDateMap] = useState({});
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(marketTodayStr());
   const [selectedVersion, setSelectedVersion] = useState(1);
   const [nextRefreshTimeStr, setNextRefreshTimeStr] = useState('');
 
   // Load historical reports directory index
   useEffect(() => {
     fetchAvailableReportsIndex().then(({ dates, versionsByDate }) => {
+      setIndexFailed(!dates || dates.length === 0);
       if (dates && dates.length > 0) {
         setAvailableDates(dates);
         setVersionsByDateMap(versionsByDate);
@@ -58,7 +72,10 @@ export default function App() {
           setSelectedVersion(versions[0]);
         }
       }
-    }).catch(err => console.warn('Directory index fetch error:', err));
+    }).catch(err => {
+      console.warn('Directory index fetch error:', err);
+      setIndexFailed(true);
+    });
   }, []);
 
   // Update available versions when selected date changes
@@ -119,7 +136,7 @@ export default function App() {
     // Fetch official IESO Adequacy XML report for official outage totals
     const targetDateStr = (!isLiveMode && selectedDate)
       ? selectedDate
-      : new Date().toISOString().split('T')[0];
+      : marketTodayStr();
     const cleanDateStr = targetDateStr.replace(/-/g, '');
     const adequacyFilename = `PUB_Adequacy3_${cleanDateStr}.xml`;
 
@@ -149,7 +166,8 @@ export default function App() {
       }
     }
 
-    if (!fetchedAdequacyXml) {
+    // The undated live file is today's report. Only use it in live mode, never for an archive date.
+    if (!fetchedAdequacyXml && isLiveMode) {
       try {
         const adeqRes = await fetch(adequacyFallbackLiveUrl, { cache: 'no-cache' });
         if (adeqRes.ok) {
@@ -160,37 +178,50 @@ export default function App() {
       }
     }
 
-    // Fetch official IESO Variable Generation (VG) Forecast XML
+    // Fetch official IESO Variable Generation (VG) Forecast XML.
+    // On failure, clear it so old data is never shown as current.
+    let vgText = null;
     try {
       const vgRes = await fetch('/api/ieso-vg-forecast');
-      if (vgRes.ok) {
-        const vgText = await vgRes.text();
-        setVgXmlText(vgText);
-      } else {
-        const directVg = await fetch('https://reports-public.ieso.ca/public/VGForecastSummary/PUB_VGForecastSummary.xml');
-        if (directVg.ok) setVgXmlText(await directVg.text());
-      }
+      if (vgRes.ok) vgText = await vgRes.text();
     } catch (vErr) {
-      console.warn('VG forecast fetch error:', vErr);
+      console.warn('VG forecast API fetch error:', vErr);
     }
+    if (!vgText) {
+      try {
+        const directVg = await fetch(VG_DIRECT_URL);
+        if (directVg.ok) vgText = await directVg.text();
+      } catch (vErr2) {
+        console.warn('VG forecast direct fetch error:', vErr2);
+      }
+    }
+    const vgOk = !!vgText && vgText.includes('<FuelType>Wind</FuelType>');
+    setVgXmlText(vgOk ? vgText : null);
 
     // Fetch Open-Meteo Wind Weather Forecast (ECMWF & GFS)
+    let wJson = null;
     try {
       const wRes = await fetch('/api/wind-weather-forecast');
-      if (wRes.ok) {
-        const wJson = await wRes.json();
-        setWeatherData(wJson);
-      } else {
-        const directW = await fetch('https://api.open-meteo.com/v1/forecast?latitude=43.8,42.4,44.0,44.5,46.5&longitude=-81.3,-82.0,-80.0,-76.0,-84.0&hourly=wind_speed_100m,wind_speed_10m&models=ecmwf_ifs025,gfs_seamless');
-        if (directW.ok) setWeatherData(await directW.json());
-      }
+      if (wRes.ok) wJson = await wRes.json();
     } catch (wErr) {
-      console.warn('Weather forecast fetch error:', wErr);
+      console.warn('Weather forecast API fetch error:', wErr);
     }
+    if (!Array.isArray(wJson)) {
+      try {
+        const directW = await fetch(OPEN_METEO_DIRECT_URL);
+        if (directW.ok) wJson = await directW.json();
+      } catch (wErr2) {
+        console.warn('Weather forecast direct fetch error:', wErr2);
+      }
+    }
+    const weatherOk = Array.isArray(wJson) && wJson.length >= 5 && wJson.every(loc => Array.isArray(loc?.hourly?.time));
+    setWeatherData(weatherOk ? wJson : null);
+    setWindSourceStatus({ ieso: vgOk ? 'ok' : 'failed', weather: weatherOk ? 'ok' : 'failed' });
 
     if (fetchedXml) {
       setXmlText(fetchedXml);
       setAdequacyXmlText(fetchedAdequacyXml);
+      setAdequacyFailed(!fetchedAdequacyXml);
       try {
         const parsed = parseIesoXml(fetchedXml, fetchedAdequacyXml, null, sortBy);
         setData(parsed);
@@ -288,7 +319,10 @@ export default function App() {
           <div class="bg-rose-50 border border-rose-200 text-rose-800 px-3 py-2 rounded mb-3 flex items-center justify-between text-xs">
             <div class="flex items-center gap-2">
               <AlertTriangle class="w-3.5 h-3.5 text-rose-600 shrink-0" />
-              <span>{error}</span>
+              <span>
+                {error}
+                {data && lastRefreshed && ` The data below is from the last successful load at ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`}
+              </span>
             </div>
             <button
               onClick={fetchReport}
@@ -296,6 +330,20 @@ export default function App() {
             >
               Retry
             </button>
+          </div>
+        )}
+
+        {/* Notices for secondary reports that did not load */}
+        {data && adequacyFailed && (
+          <div class="bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 rounded mb-3 flex items-center gap-2 text-xs">
+            <AlertTriangle class="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>The official IESO outage report (Adequacy) did not load for this date. Outage MW shown are worked out from the generator report instead.</span>
+          </div>
+        )}
+        {indexFailed && !isLiveMode && (
+          <div class="bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 rounded mb-3 flex items-center gap-2 text-xs">
+            <AlertTriangle class="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>The list of archived reports did not load, so past dates and versions can't be listed right now.</span>
           </div>
         )}
 
@@ -463,6 +511,7 @@ export default function App() {
                   data={data}
                   vgXmlText={vgXmlText}
                   weatherData={weatherData}
+                  sourceStatus={windSourceStatus}
                   onRefresh={fetchReport}
                 />
               </main>

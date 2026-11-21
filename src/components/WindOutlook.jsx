@@ -29,14 +29,35 @@ function speedToCapacityFactor(speedKmh) {
   return Math.min(0.82, Math.max(0, rawCF * 0.82));
 }
 
+const HOUR_MS = 3600 * 1000;
+// IESO market time is EST all year (UTC-5)
+const EST_OFFSET_MS = 5 * HOUR_MS;
+
 /**
- * Formats local date as YYYY-MM-DD to match IESO ForecastDate
+ * UTC ms of the END of an hour -> IESO market date (YYYY-MM-DD) and hour ending (1..24)
  */
-function getLocalDateStr(d) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function toMarketHour(hourEndMs) {
+  const start = new Date(hourEndMs - HOUR_MS - EST_OFFSET_MS);
+  return {
+    dateStr: start.toISOString().slice(0, 10),
+    hourEnding: start.getUTCHours() + 1,
+    startHour: start.getUTCHours(),
+    startDate: start
+  };
+}
+
+/**
+ * Builds a lookup of UTC ms -> value for one Open-Meteo hourly series (timezone=GMT)
+ */
+function buildTimeIndex(hourly, key) {
+  const map = new Map();
+  if (!hourly || !Array.isArray(hourly.time) || !Array.isArray(hourly[key])) return map;
+  hourly.time.forEach((t, idx) => {
+    const ms = Date.parse(`${t}:00Z`);
+    const v = hourly[key][idx];
+    if (!isNaN(ms) && typeof v === 'number' && isFinite(v)) map.set(ms, v);
+  });
+  return map;
 }
 
 /**
@@ -98,58 +119,65 @@ function getWindClassification(cfPercent) {
   }
 }
 
-export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh }) {
+export default function WindOutlook({ data, vgXmlText, weatherData, sourceStatus = {}, onRefresh }) {
   const [showIeso, setShowIeso] = useState(true);
   const [showEcmwf, setShowEcmwf] = useState(true);
   const [showGfs, setShowGfs] = useState(true);
   const [showUncertainty, setShowUncertainty] = useState(true);
   const [hoveredHourIndex, setHoveredHourIndex] = useState(null);
 
+  const iesoMap = useMemo(() => parseVgXml(vgXmlText), [vgXmlText]);
+
+  // Per-cluster lookups of real model values keyed by UTC time. Empty when the fetch failed.
+  const weatherIndex = useMemo(() => {
+    if (!Array.isArray(weatherData) || weatherData.length < REGIONAL_CLUSTERS.length) return null;
+    const idx = REGIONAL_CLUSTERS.map(cluster => {
+      const hourly = weatherData[cluster.locationIdx]?.hourly;
+      return {
+        ecmwf: buildTimeIndex(hourly, 'wind_speed_100m_ecmwf_ifs025'),
+        gfs: buildTimeIndex(hourly, 'wind_speed_100m_gfs_seamless')
+      };
+    });
+    const hasAny = idx.some(c => c.ecmwf.size > 0 || c.gfs.size > 0);
+    return hasAny ? idx : null;
+  }, [weatherData]);
+
+  // What failed to load. Nothing is ever filled in for a missing source.
+  const iesoLoaded = iesoMap.size > 0;
+  const weatherLoaded = weatherIndex !== null;
+  const iesoFailed = !iesoLoaded && sourceStatus.ieso !== 'loading';
+  const weatherFailed = !weatherLoaded && sourceStatus.weather !== 'loading';
+
   // 1. Process 168-Hour Time Series Data (Combining IESO 48h + ECMWF + GFS)
+  //    Hour 0 is the hour in progress right now (not midnight), in IESO market time (EST).
   const forecastSeries = useMemo(() => {
     const hours = [];
-    const now = new Date();
-    const iesoMap = parseVgXml(vgXmlText);
-
-    // Check if weather data is valid array of locations
-    const hasWeatherData = Array.isArray(weatherData) && weatherData.length >= 5;
+    const firstHourEndMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS + HOUR_MS;
 
     for (let i = 0; i < 168; i++) {
-      const pointTime = new Date(now.getTime() + i * 3600 * 1000);
-      const dateStr = getLocalDateStr(pointTime);
-      const hourNum = pointTime.getHours() + 1; // 1-24 format for IESO
-      const dayName = pointTime.toLocaleDateString('en-US', { weekday: 'short' });
-      const monthDay = pointTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const timeStr = `${pointTime.getHours().toString().padStart(2, '0')}:00`;
+      const hourEndMs = firstHourEndMs + i * HOUR_MS;
+      const { dateStr, hourEnding, startHour, startDate } = toMarketHour(hourEndMs);
+      const hourNum = hourEnding;
+      const dayName = startDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+      const monthDay = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      const timeStr = `${String(startHour).padStart(2, '0')}:00`;
 
-      // 1. Weather Model Calculations across 5 clusters
-      let ecmwfMW = 0;
-      let gfsMW = 0;
+      // 1. Weather model MW across 5 clusters. A model total exists only when every
+      //    cluster has a real value for this hour; otherwise it is left empty (null).
+      let ecmwfMW = weatherIndex ? 0 : null;
+      let gfsMW = weatherIndex ? 0 : null;
       const clusterDetails = [];
 
-      REGIONAL_CLUSTERS.forEach(cluster => {
-        let ecmwfSpeed = 16; // default km/h (~4.4 m/s)
-        let gfsSpeed = 15;
+      REGIONAL_CLUSTERS.forEach((cluster, cIdx) => {
+        // Model value valid at the end of the hour (hour-ending, like IESO)
+        const ecmwfSpeed = weatherIndex ? (weatherIndex[cIdx].ecmwf.get(hourEndMs) ?? null) : null;
+        const gfsSpeed = weatherIndex ? (weatherIndex[cIdx].gfs.get(hourEndMs) ?? null) : null;
 
-        if (hasWeatherData && weatherData[cluster.locationIdx]?.hourly) {
-          const hourly = weatherData[cluster.locationIdx].hourly;
-          const timeIdx = i < hourly.time?.length ? i : 0;
-          ecmwfSpeed = hourly.wind_speed_100m_ecmwf_ifs025?.[timeIdx] ?? 16;
-          gfsSpeed = hourly.wind_speed_100m_gfs_seamless?.[timeIdx] ?? 15;
-        } else {
-          const wave = Math.sin((i + cluster.locationIdx * 4) / 12 * Math.PI) * 10 + 15;
-          ecmwfSpeed = Math.max(4, wave + (i % 4));
-          gfsSpeed = Math.max(4, wave - (i % 5));
-        }
+        const cEcmwfMW = ecmwfSpeed !== null ? cluster.capacity * speedToCapacityFactor(ecmwfSpeed) : null;
+        const cGfsMW = gfsSpeed !== null ? cluster.capacity * speedToCapacityFactor(gfsSpeed) : null;
 
-        const ecmwfCF = speedToCapacityFactor(ecmwfSpeed);
-        const gfsCF = speedToCapacityFactor(gfsSpeed);
-
-        const cEcmwfMW = cluster.capacity * ecmwfCF;
-        const cGfsMW = cluster.capacity * gfsCF;
-
-        ecmwfMW += cEcmwfMW;
-        gfsMW += cGfsMW;
+        ecmwfMW = (ecmwfMW === null || cEcmwfMW === null) ? null : ecmwfMW + cEcmwfMW;
+        gfsMW = (gfsMW === null || cGfsMW === null) ? null : gfsMW + cGfsMW;
 
         clusterDetails.push({
           id: cluster.id,
@@ -159,35 +187,32 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
           gfsSpeed,
           ecmwfMW: cEcmwfMW,
           gfsMW: cGfsMW,
-          cf: ecmwfCF * 100
+          cf: ecmwfSpeed !== null ? speedToCapacityFactor(ecmwfSpeed) * 100 : null
         });
       });
 
       // 2. Official IESO Forecast Point lookup
       const iesoMW = iesoMap.get(`${dateStr}-${hourNum}`) ?? null;
 
-      // 3. Smooth Blended Forecast
-      let blendedMW = ecmwfMW;
-      if (iesoMW !== null) {
-        if (i < 36) {
-          blendedMW = iesoMW;
-        } else if (i < 48) {
-          const ratio = (48 - i) / 12;
-          blendedMW = ratio * iesoMW + (1 - ratio) * ecmwfMW;
-        }
+      // 3. Blended Forecast: IESO first, ECMWF beyond. Null when neither is available.
+      let blendedMW = null;
+      if (iesoMW !== null && ecmwfMW !== null && i >= 36 && i < 48) {
+        const ratio = (48 - i) / 12;
+        blendedMW = ratio * iesoMW + (1 - ratio) * ecmwfMW;
+      } else if (iesoMW !== null && (i < 48 || ecmwfMW === null)) {
+        blendedMW = iesoMW;
+      } else if (ecmwfMW !== null) {
+        blendedMW = ecmwfMW;
       }
 
-      // 4. Uncertainty range (min/max of models)
-      const minMW = Math.min(ecmwfMW, gfsMW, iesoMW ?? ecmwfMW);
-      const maxMW = Math.max(ecmwfMW, gfsMW, iesoMW ?? ecmwfMW);
-
-      // 5. Net Load calculation
-      const baselineDemand = 15500 + Math.sin((i - 7) / 24 * 2 * Math.PI) * 2500;
-      const netLoadMW = baselineDemand - blendedMW;
+      // 4. Uncertainty range (min/max of the models that actually have a value)
+      const available = [iesoMW, ecmwfMW, gfsMW].filter(v => v !== null);
+      const minMW = available.length >= 2 ? Math.min(...available) : null;
+      const maxMW = available.length >= 2 ? Math.max(...available) : null;
 
       hours.push({
         index: i,
-        timestamp: pointTime,
+        timestamp: new Date(hourEndMs - HOUR_MS),
         dateStr,
         dayName,
         monthDay,
@@ -199,20 +224,20 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         blendedMW,
         minMW,
         maxMW,
-        netLoadMW,
-        capacityFactor: (blendedMW / ONTARIO_TOTAL_WIND_CAPACITY) * 100,
+        capacityFactor: blendedMW !== null ? (blendedMW / ONTARIO_TOTAL_WIND_CAPACITY) * 100 : null,
         clusters: clusterDetails
       });
     }
 
     return hours;
-  }, [vgXmlText, weatherData]);
+  }, [iesoMap, weatherIndex]);
 
   // 2. Daily Summary Aggregates (Exactly 7 Calendar Cards)
   const dailySummaries = useMemo(() => {
     const daysMap = new Map();
 
     forecastSeries.forEach(h => {
+      if (h.blendedMW === null) return;
       if (!daysMap.has(h.dateStr)) {
         daysMap.set(h.dateStr, {
           dateStr: h.dateStr,
@@ -235,7 +260,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
       const avgCF = (avgMW / ONTARIO_TOTAL_WIND_CAPACITY) * 100;
       const classification = getWindClassification(avgCF);
 
-      const titleName = idx === 0 ? 'Today' : dayData.dayName;
+      const titleName = dateStr === forecastSeries[0]?.dateStr ? 'Today' : dayData.dayName;
 
       summaries.push({
         dateStr,
@@ -264,6 +289,7 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
       const hStart = forecastSeries[i];
       const h3 = forecastSeries[i + 3];
       const h6 = forecastSeries[i + 6];
+      if (hStart.blendedMW === null || h3.blendedMW === null || h6.blendedMW === null) continue;
 
       const delta3h = h3.blendedMW - hStart.blendedMW;
       const delta6h = h6.blendedMW - hStart.blendedMW;
@@ -296,15 +322,16 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
 
   // Overall 7-Day Stats
   const weekStats = useMemo(() => {
-    if (!forecastSeries.length) return null;
-    const blendedList = forecastSeries.map(h => h.blendedMW);
+    const blendedList = forecastSeries.map(h => h.blendedMW).filter(v => v !== null);
+    if (!blendedList.length) return null;
     const maxMW = Math.round(Math.max(...blendedList));
     const minMW = Math.round(Math.min(...blendedList));
     const avgMW = Math.round(blendedList.reduce((a, b) => a + b, 0) / blendedList.length);
     const avgCF = Math.round((avgMW / ONTARIO_TOTAL_WIND_CAPACITY) * 100);
-    const totalEnergyGWh = Math.round((avgMW * 168) / 1000);
+    const hoursCovered = blendedList.length;
+    const totalEnergyGWh = Math.round((avgMW * hoursCovered) / 1000);
 
-    return { maxMW, minMW, avgMW, avgCF, totalEnergyGWh };
+    return { maxMW, minMW, avgMW, avgCF, totalEnergyGWh, hoursCovered };
   }, [forecastSeries]);
 
   // SVG Chart Dimensions
@@ -324,12 +351,15 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
 
   // Render SVG Paths
   const buildPath = (key) => {
+    let prevMissing = true;
     return forecastSeries.reduce((acc, pt, i) => {
       const val = pt[key];
-      if (val === null || val === undefined) return acc;
+      if (val === null || val === undefined) { prevMissing = true; return acc; }
       const x = getX(i);
       const y = getY(val);
-      return acc + (i === 0 || acc === '' ? `M ${x} ${y}` : ` L ${x} ${y}`);
+      const cmd = prevMissing ? `${acc ? ' ' : ''}M ${x} ${y}` : ` L ${x} ${y}`;
+      prevMissing = false;
+      return acc + cmd;
     }, '');
   };
 
@@ -339,24 +369,66 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
 
   // SVG Polygon for uncertainty area
   const uncertaintyArea = useMemo(() => {
+    // One closed shape per run of hours that have at least two real forecasts
+    const shapes = [];
     let top = '';
     let bottom = '';
+    const flush = () => {
+      if (top) shapes.push(top + bottom + ' Z');
+      top = '';
+      bottom = '';
+    };
 
     forecastSeries.forEach((pt, i) => {
+      if (pt.minMW === null || pt.maxMW === null) { flush(); return; }
       const x = getX(i);
       const yMax = getY(pt.maxMW);
       const yMin = getY(pt.minMW);
-      top += (i === 0 ? `M ${x} ${yMax}` : ` L ${x} ${yMax}`);
+      top += (top === '' ? `M ${x} ${yMax}` : ` L ${x} ${yMax}`);
       bottom = ` L ${x} ${yMin}` + bottom;
     });
+    flush();
 
-    return top + bottom + ' Z';
+    return shapes.join(' ');
   }, [forecastSeries]);
 
   const currentHoveredPoint = hoveredHourIndex !== null ? forecastSeries[hoveredHourIndex] : null;
+  const fmtMW = (v) => (v === null || v === undefined) ? 'Not loaded' : `${Math.round(v).toLocaleString()} MW`;
+
+  // Plain-language notices for anything that did not load
+  const loadNotices = [];
+  if (iesoFailed) {
+    loadNotices.push('The official IESO wind forecast (PUB_VGForecastSummary) did not load, so the IESO line and its 48-hour numbers are not shown.');
+  }
+  if (weatherFailed) {
+    loadNotices.push('The ECMWF and GFS weather forecasts (Open-Meteo) did not load, so the weather model lines, days 3 to 7 and the regional breakdown are not shown.');
+  }
+  const nothingLoaded = !iesoLoaded && !weatherLoaded;
 
   return (
     <div className="space-y-4 text-slate-800">
+      {/* Data load notice: shown instead of filling gaps with made-up numbers */}
+      {loadNotices.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-lg p-3 text-xs flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold">Some wind forecast data did not load</p>
+              {loadNotices.map((msg, i) => <p key={i}>{msg}</p>)}
+              <p className="text-rose-700">Only data that actually loaded is shown below. Nothing is estimated in its place.</p>
+            </div>
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="px-2 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded font-medium text-[11px] shrink-0"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 1. Header Banner & Quick Metrics */}
       <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -390,7 +462,9 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         {weekStats && (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3">
             <div className="bg-slate-50 p-2.5 rounded border border-slate-100">
-              <span className="text-[11px] text-slate-500 font-medium block">7-Day Avg Output</span>
+              <span className="text-[11px] text-slate-500 font-medium block">
+                {weekStats.hoursCovered >= 168 ? '7-Day Avg Output' : `Avg Output (next ${weekStats.hoursCovered} h)`}
+              </span>
               <div className="text-base font-extrabold text-slate-900 mt-0.5">
                 {weekStats.avgMW.toLocaleString()} <span className="text-xs font-normal text-slate-500">MW</span>
               </div>
@@ -412,11 +486,13 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
               <div className="text-base font-extrabold text-rose-700 mt-0.5">
                 {weekStats.minMW.toLocaleString()} <span className="text-xs font-normal text-slate-500">MW</span>
               </div>
-              <span className="text-[10px] text-rose-600 font-medium">Thermal dispatch pressure high</span>
+              <span className="text-[10px] text-rose-600 font-medium">Lowest hour in the outlook</span>
             </div>
 
             <div className="bg-slate-50 p-2.5 rounded border border-slate-100">
-              <span className="text-[11px] text-slate-500 font-medium block">7-Day Wind Generation</span>
+              <span className="text-[11px] text-slate-500 font-medium block">
+                {weekStats.hoursCovered >= 168 ? '7-Day Wind Generation' : `Wind Generation (next ${weekStats.hoursCovered} h)`}
+              </span>
               <div className="text-base font-extrabold text-blue-700 mt-0.5">
                 {weekStats.totalEnergyGWh.toLocaleString()} <span className="text-xs font-normal text-slate-500">GWh</span>
               </div>
@@ -544,6 +620,13 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
 
         {/* SVG Time-Series Chart Canvas */}
         <div className="relative w-full overflow-x-auto">
+          {nothingLoaded && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <div className="bg-white/90 border border-rose-200 text-rose-800 text-xs font-medium px-3 py-2 rounded">
+                No wind forecast data loaded. Nothing to chart.
+              </div>
+            </div>
+          )}
           <div className="min-w-[700px]">
             <svg 
               viewBox={`0 0 ${chartWidth} ${chartHeight}`} 
@@ -578,6 +661,8 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
               {/* Day Divider Vertical Lines & Date Labels (Placed at Midnight) */}
               {dailySummaries.map((day, idx) => {
                 const x = getX(day.firstHourIdx);
+                const next = dailySummaries[idx + 1];
+                const showLabel = !next || next.firstHourIdx - day.firstHourIdx >= 10;
                 return (
                   <g key={day.dateStr}>
                     <line 
@@ -588,13 +673,15 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                       stroke="#e2e8f0" 
                       strokeWidth={idx === 0 ? "1.5" : "1"} 
                     />
-                    <text 
-                      x={x + 6} 
-                      y={paddingTop + 12} 
-                      className="text-[10px] font-bold fill-slate-500"
-                    >
-                      {day.dayName} ({day.monthDay})
-                    </text>
+                    {showLabel && (
+                      <text 
+                        x={x + 6} 
+                        y={paddingTop + 12} 
+                        className="text-[10px] font-bold fill-slate-500"
+                      >
+                        {day.dayName} ({day.monthDay})
+                      </text>
+                    )}
                   </g>
                 );
               })}
@@ -695,14 +782,16 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                     strokeWidth="1" 
                     strokeDasharray="2 2" 
                   />
-                  <circle 
-                    cx={getX(currentHoveredPoint.index)} 
-                    cy={getY(currentHoveredPoint.blendedMW)} 
-                    r="4" 
-                    fill="#2563eb" 
-                    stroke="#ffffff" 
-                    strokeWidth="2" 
-                  />
+                  {currentHoveredPoint.blendedMW !== null && (
+                    <circle 
+                      cx={getX(currentHoveredPoint.index)} 
+                      cy={getY(currentHoveredPoint.blendedMW)} 
+                      r="4" 
+                      fill="#2563eb" 
+                      stroke="#ffffff" 
+                      strokeWidth="2" 
+                    />
+                  )}
                 </g>
               )}
             </svg>
@@ -718,11 +807,11 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-0.5">
                 <div>
                   <span className="text-slate-400">Blended MW:</span>{' '}
-                  <span className="font-extrabold text-emerald-400">{Math.round(currentHoveredPoint.blendedMW).toLocaleString()} MW</span>
+                  <span className="font-extrabold text-emerald-400">{fmtMW(currentHoveredPoint.blendedMW)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400">Capacity Factor:</span>{' '}
-                  <span className="font-bold text-amber-300">{Math.round(currentHoveredPoint.capacityFactor)}%</span>
+                  <span className="font-bold text-amber-300">{currentHoveredPoint.capacityFactor === null ? 'Not loaded' : `${Math.round(currentHoveredPoint.capacityFactor)}%`}</span>
                 </div>
                 {currentHoveredPoint.iesoMW !== null && (
                   <div>
@@ -732,15 +821,15 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                 )}
                 <div>
                   <span className="text-slate-400">ECMWF Weather:</span>{' '}
-                  <span className="font-bold text-emerald-300">{Math.round(currentHoveredPoint.ecmwfMW).toLocaleString()} MW</span>
+                  <span className="font-bold text-emerald-300">{fmtMW(currentHoveredPoint.ecmwfMW)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400">GFS Weather:</span>{' '}
-                  <span className="font-bold text-amber-400">{Math.round(currentHoveredPoint.gfsMW).toLocaleString()} MW</span>
+                  <span className="font-bold text-amber-400">{fmtMW(currentHoveredPoint.gfsMW)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400">Model Spread:</span>{' '}
-                  <span className="font-bold text-purple-300">±{Math.round((currentHoveredPoint.maxMW - currentHoveredPoint.minMW) / 2)} MW</span>
+                  <span className="font-bold text-purple-300">{currentHoveredPoint.maxMW === null ? 'n/a' : `±${Math.round((currentHoveredPoint.maxMW - currentHoveredPoint.minMW) / 2)} MW`}</span>
                 </div>
               </div>
             </div>
@@ -768,7 +857,9 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
 
             {rampEvents.length === 0 ? (
               <div className="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded border border-dashed border-slate-200">
-                No major wind ramps exceeding ±500 MW/3h detected in 7-day horizon.
+                {weekStats
+                  ? `No major wind ramps exceeding ±500 MW/3h detected in the next ${weekStats.hoursCovered} hours.`
+                  : 'No forecast data loaded, so ramps cannot be checked.'}
               </div>
             ) : (
               <div className="space-y-2">
@@ -836,13 +927,15 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                   <span>Gas Dispatch & Thermal Requirement</span>
                 </div>
                 <p className="text-slate-600 text-[11px] leading-relaxed">
-                  {weekStats && weekStats.avgCF > 40 ? (
+                  {!weekStats ? (
+                    <span className="text-slate-500">No forecast data loaded.</span>
+                  ) : weekStats.avgCF > 40 ? (
                     <span className="text-emerald-700 font-semibold">
                       Strong average wind output ({weekStats.avgCF}% CF) will suppress gas thermal dispatch and lower peak HOEP spot price volatility across Ontario.
                     </span>
                   ) : (
                     <span className="text-amber-700 font-semibold">
-                      Moderate-to-low wind generation ({weekStats?.avgCF}% CF) will increase reliance on natural gas thermal peakers (Napanee, Halton Hills, Greenfield Energy) during peak demand periods.
+                      Moderate-to-low wind generation ({weekStats.avgCF}% CF) will increase reliance on natural gas thermal peakers (Napanee, Halton Hills, Greenfield Energy) during peak demand periods.
                     </span>
                   )}
                 </p>
@@ -887,11 +980,12 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {REGIONAL_CLUSTERS.map(cluster => {
             const samplePoint = forecastSeries[0]?.clusters.find(c => c.id === cluster.id);
-            const speedKmh = samplePoint ? samplePoint.ecmwfSpeed : 16;
-            const speedMs = (speedKmh / 3.6).toFixed(1);
-            const cfPercent = samplePoint ? Math.round(samplePoint.cf) : 25;
-            const currentMw = samplePoint ? Math.round(samplePoint.ecmwfMW) : Math.round(cluster.capacity * 0.25);
-            const classification = getWindClassification(cfPercent);
+            const hasSample = samplePoint && samplePoint.ecmwfSpeed !== null;
+            const speedKmh = hasSample ? Math.round(samplePoint.ecmwfSpeed) : null;
+            const speedMs = hasSample ? (samplePoint.ecmwfSpeed / 3.6).toFixed(1) : null;
+            const cfPercent = hasSample ? Math.round(samplePoint.cf) : null;
+            const currentMw = hasSample ? Math.round(samplePoint.ecmwfMW) : null;
+            const classification = hasSample ? getWindClassification(cfPercent) : null;
 
             return (
               <div key={cluster.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
@@ -907,11 +1001,11 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                 <div className="bg-white p-2 rounded border border-slate-200 space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">100m Wind Speed:</span>
-                    <span className="font-mono font-bold text-slate-800">{speedKmh} km/h ({speedMs} m/s)</span>
+                    <span className="font-mono font-bold text-slate-800">{hasSample ? `${speedKmh} km/h (${speedMs} m/s)` : 'Not loaded'}</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Expected Output:</span>
-                    <span className="font-bold text-emerald-700">{currentMw} MW</span>
+                    <span className="font-bold text-emerald-700">{hasSample ? `${currentMw} MW` : 'Not loaded'}</span>
                   </div>
                 </div>
 
@@ -919,13 +1013,15 @@ export default function WindOutlook({ data, vgXmlText, weatherData, onRefresh })
                 <div>
                   <div className="flex justify-between text-[10px] text-slate-600 mb-1 font-medium">
                     <span>Capacity Factor</span>
-                    <span>{cfPercent}%</span>
+                    <span>{hasSample ? `${cfPercent}%` : 'Not loaded'}</span>
                   </div>
                   <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full ${classification.barColor}`} 
-                      style={{ width: `${Math.min(100, cfPercent)}%` }} 
-                    />
+                    {hasSample && (
+                      <div 
+                        className={`h-full ${classification.barColor}`} 
+                        style={{ width: `${Math.min(100, cfPercent)}%` }} 
+                      />
+                    )}
                   </div>
                 </div>
               </div>

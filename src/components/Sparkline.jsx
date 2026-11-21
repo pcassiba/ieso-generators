@@ -9,9 +9,18 @@ export default function Sparkline({ dataPoints = [], width = 320, height = 44, c
     );
   }
 
-  const validPoints = dataPoints.map(v => (typeof v === 'number' && !isNaN(v)) ? v : 0);
-  const minVal = Math.min(...validPoints);
-  const maxVal = Math.max(...validPoints);
+  // Missing hours stay as gaps in the line; they are never drawn as 0 MW
+  const validPoints = dataPoints.map(v => (typeof v === 'number' && !isNaN(v)) ? v : null);
+  const reported = validPoints.filter(v => v !== null);
+  if (reported.length === 0) {
+    return (
+      <div class="h-10 flex items-center justify-center text-slate-400 text-[11px] italic">
+        No hourly data available
+      </div>
+    );
+  }
+  const minVal = Math.min(...reported);
+  const maxVal = Math.max(...reported);
   const range = maxVal - minVal;
 
   const paddingX = 6;
@@ -19,23 +28,36 @@ export default function Sparkline({ dataPoints = [], width = 320, height = 44, c
   const chartWidth = width - paddingX * 2;
   const chartHeight = height - paddingY * 2;
 
-  const points = validPoints.map((val, idx) => {
-    const x = validPoints.length > 1
-      ? paddingX + (idx / (validPoints.length - 1)) * chartWidth
-      : width / 2;
+  const xAt = (idx) => validPoints.length > 1
+    ? paddingX + (idx / (validPoints.length - 1)) * chartWidth
+    : width / 2;
+  const yAt = (val) => range > 0
+    ? height - paddingY - ((val - minVal) / range) * chartHeight
+    : height / 2;
 
-    const y = range > 0
-      ? height - paddingY - ((val - minVal) / range) * chartHeight
-      : height / 2;
+  const points = validPoints
+    .map((val, idx) => (val === null ? null : { x: xAt(idx), y: yAt(val), val }));
 
-    return { x, y, val };
+  // Split into runs of consecutive reported hours
+  const runs = [];
+  let run = [];
+  points.forEach(p => {
+    if (p === null) { if (run.length) runs.push(run); run = []; }
+    else run.push(p);
   });
+  if (run.length) runs.push(run);
 
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  
-  const firstP = points[0];
-  const lastP = points[points.length - 1];
-  const areaD = `${pathD} L ${lastP.x.toFixed(1)} ${height - 2} L ${firstP.x.toFixed(1)} ${height - 2} Z`;
+  const pathD = runs
+    .map(r => r.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' '))
+    .join(' ');
+  const areaD = runs
+    .map(r => {
+      const line = r.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      return `${line} L ${r[r.length - 1].x.toFixed(1)} ${height - 2} L ${r[0].x.toFixed(1)} ${height - 2} Z`;
+    })
+    .join(' ');
+
+  const lastP = runs.length ? runs[runs.length - 1][runs[runs.length - 1].length - 1] : null;
 
   const gradientId = `sparkline-grad-${Math.random().toString(36).substr(2, 9)}`;
 
